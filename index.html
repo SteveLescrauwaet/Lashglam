@@ -1,15 +1,26 @@
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#090909" />
-    <meta name="description" content="Suivi des prestations, ventes et moyens de paiement." />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <title>Suivi d'activité</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html> i
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#090909" />
+  <meta name="description" content="Suivi des prestations, produits, paiements et chiffre d'affaires." />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./styles.css?v=1.2.0" />
+  <title>Suivi Beauty</title>
+</head>
+<body>
+  <div id="app">
+    <div class="boot-screen">
+      <div class="brand-mark">CA</div>
+      <p>Chargement…</p>
+    </div>
+  </div>
+
+  <!-- Version navigateur : aucune compilation nécessaire. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./app.js?v=1.2.0"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "Suivi d'activité Beauty",
+  "short_name": "Suivi Beauty",
+  "description": "Prestations, produits, moyens de paiement et chiffre d'affaires.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#090909",
+  "theme_color": "#090909",
+  "icons": [
+    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png"},
+    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}
