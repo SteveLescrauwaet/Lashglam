@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.2.0';
+  const VERSION = '1.3.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -139,10 +139,40 @@
 
   function renderHistory(){
     const sales=monthSales(), total=sales.reduce((a,s)=>a+saleTotal(s),0);
-    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Historique</h1><p>Ventes regroupées par mode de paiement.</p></div>${monthNavHTML()}</div><div class="history-total">${sales.length} vente${sales.length>1?'s':''} · ${euro(total)}</div><div class="history-groups">${PAYMENTS.map(p=>historyGroup(p,sales.filter(s=>s.payment_method===p.id))).join('')}</div>`;
+    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Historique</h1><p>Ventes regroupées par mode de paiement. Tu peux supprimer une ligne ou une vente complète.</p></div>${monthNavHTML()}</div><div class="history-total">${sales.length} vente${sales.length>1?'s':''} · ${euro(total)}</div><div class="history-groups">${PAYMENTS.map(p=>historyGroup(p,sales.filter(s=>s.payment_method===p.id))).join('')}</div>`;
     bindMonthNav();
+    document.querySelectorAll('[data-delete-sale]').forEach(b=>b.onclick=()=>deleteHistorySale(b.dataset.deleteSale));
+    document.querySelectorAll('[data-delete-line]').forEach(b=>b.onclick=()=>deleteHistoryLine(b.dataset.deleteLine,b.dataset.saleId));
   }
-  function historyGroup(p,sales){ const total=sales.reduce((a,s)=>a+saleTotal(s),0); return `<details class="pay-group" open><summary><div class="pay-icon">${p.icon}</div><div class="pay-title"><strong>${p.label}</strong><span>${sales.length} vente${sales.length>1?'s':''}</span></div><b>${euro(total)}</b></summary><div class="pay-body">${sales.length?sales.map(s=>`<details class="sale-card"><summary><div><strong>${esc(s.note||'Vente')}</strong><span>${dateLabel(s.sale_date)}</span></div><b>${euro(saleTotal(s))}</b></summary><div class="sale-details">${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)}</small></div><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b></div>`).join('')}</div></details>`).join(''):'<div class="empty">Aucune vente.</div>'}</div></details>`; }
+  function historyGroup(p,sales){
+    const total=sales.reduce((a,s)=>a+saleTotal(s),0);
+    return `<details class="pay-group" open><summary><div class="pay-icon">${p.icon}</div><div class="pay-title"><strong>${p.label}</strong><span>${sales.length} vente${sales.length>1?'s':''}</span></div><b>${euro(total)}</b></summary><div class="pay-body">${sales.length?sales.map(s=>`<details class="sale-card"><summary><div><strong>${esc(s.note||'Vente')}</strong><span>${dateLabel(s.sale_date)}</span></div><b>${euro(saleTotal(s))}</b></summary><div class="sale-details">${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div class="sale-line-main"><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)} · ${l.type_snapshot==='produit'?'Produit':'Prestation'}</small></div><div class="sale-line-actions"><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b><button class="history-delete-line" type="button" data-delete-line="${l.id}" data-sale-id="${s.id}" title="Supprimer cette ligne">×</button></div></div>`).join('')}<div class="sale-footer"><button class="danger-btn compact" type="button" data-delete-sale="${s.id}">Supprimer la vente complète</button></div></div></details>`).join(''):'<div class="empty">Aucune vente.</div>'}</div></details>`;
+  }
+  async function deleteHistorySale(id){
+    const sale=state.sales.find(s=>s.id===id);
+    if(!sale) return;
+    const amount=euro(saleTotal(sale));
+    if(!confirm(`Supprimer définitivement cette vente de ${amount} ?\n\nCette action supprimera aussi toutes les prestations et tous les produits de cette vente.`)) return;
+    const {error}=await sb.from('sales').delete().eq('id',id).eq('user_id',state.user.id);
+    if(error){ notify('Suppression : '+error.message,'error'); return; }
+    await loadAll(); renderHistory(); notify('Vente supprimée.');
+  }
+  async function deleteHistoryLine(lineId,saleId){
+    const sale=state.sales.find(s=>s.id===saleId);
+    const line=sale?.sale_lines?.find(l=>l.id===lineId);
+    if(!sale||!line) return;
+    const lines=sale.sale_lines||[];
+    if(lines.length===1){
+      if(!confirm(`« ${line.name_snapshot} » est le seul élément de cette vente.\n\nSupprimer la vente complète ?`)) return;
+      const {error}=await sb.from('sales').delete().eq('id',saleId).eq('user_id',state.user.id);
+      if(error){ notify('Suppression : '+error.message,'error'); return; }
+      await loadAll(); renderHistory(); notify('Vente supprimée.'); return;
+    }
+    if(!confirm(`Supprimer « ${line.name_snapshot} » de cette vente ?`)) return;
+    const {error}=await sb.from('sale_lines').delete().eq('id',lineId).eq('user_id',state.user.id);
+    if(error){ notify('Suppression : '+error.message,'error'); return; }
+    await loadAll(); renderHistory(); notify('Ligne supprimée de la vente.');
+  }
 
   function renderCatalogAdmin(){
     const prest=state.catalog.filter(x=>x.type==='prestation').sort((a,b)=>a.sort_order-b.sort_order), prod=state.catalog.filter(x=>x.type==='produit').sort((a,b)=>a.sort_order-b.sort_order);

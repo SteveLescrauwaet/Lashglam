@@ -31,3 +31,12 @@ Ne mets jamais de clé `service_role` dans ce projet.
 - PWA installable.
 
 Version : 1.2.0
+
+
+## Version 1.3.0
+- Dans **Historique**, chaque prestation/produit d'une vente peut être supprimé séparément.
+- Chaque vente peut aussi être supprimée entièrement.
+- Une confirmation est demandée avant toute suppression.
+- Si on supprime le seul élément d'une vente, l'application propose de supprimer la vente complète.
+- Le chiffre d'affaires et les totaux par moyen de paiement se recalculent automatiquement après suppression.
+- Aucun nouveau script SQL n'est nécessaire si `supabase/schema.sql` avait déjà été exécuté.
