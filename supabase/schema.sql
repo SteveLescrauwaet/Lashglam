@@ -6,6 +6,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
   defaults_seeded boolean not null default false,
+  loyalty_discount_percent numeric(5,2) not null default 10 check (loyalty_discount_percent >= 0 and loyalty_discount_percent <= 100),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

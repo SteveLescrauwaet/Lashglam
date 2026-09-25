@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.8.0';
+  const VERSION = '1.9.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -29,7 +29,7 @@
 
   const state = {
     session:null, user:null, view:'sale', month:new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-    catalog:[], clients:[], sales:[], cart:[], catalogTab:'prestation', selectedClientId:null, payment:null, saleDate:toDateInput(new Date()), note:'', manualTotal:null, saleSuccess:'', clientError:null, busy:false
+    catalog:[], clients:[], sales:[], cart:[], catalogTab:'prestation', selectedClientId:null, payment:null, saleDate:toDateInput(new Date()), note:'', manualTotal:null, saleSuccess:'', clientError:null, settingsError:null, loyaltyDiscountPercent:10, busy:false
   };
 
   const app = document.getElementById('app');
@@ -77,6 +77,8 @@
     const eligible=completed>=5 || (hasPrestation && currentAppointment>=5);
     return {completed,hasPrestation,currentAppointment,eligible};
   }
+  function loyaltyPercent(){ return Math.min(100,Math.max(0,Number(state.loyaltyDiscountPercent)||0)); }
+  function percentLabel(v){ return new Intl.NumberFormat('fr-BE',{maximumFractionDigits:2}).format(Number(v)||0); }
   function clientSaleLabel(s){
     const c=clientForSale(s);
     if(c) return `${clientCode(c)} - ${clientName(c)}`;
@@ -172,14 +174,16 @@
   async function loadAll(){
     state.busy=true; render();
     await seedDefaults();
-    const [catRes,clientsRes,salesRes] = await Promise.all([
+    const [catRes,clientsRes,salesRes,settingsRes] = await Promise.all([
       sb.from('catalog_items').select('*').order('type').order('sort_order'),
       sb.from('clients').select('*').order('client_number'),
-      sb.from('sales').select('*, sale_lines(*)').order('sale_date',{ascending:false})
+      sb.from('sales').select('*, sale_lines(*)').order('sale_date',{ascending:false}),
+      sb.from('user_settings').select('loyalty_discount_percent').eq('user_id',state.user.id).maybeSingle()
     ]);
     if(catRes.error) notify('Catalogue : '+catRes.error.message,'error'); else state.catalog=catRes.data||[];
     if(clientsRes.error){ state.clientError=clientsRes.error.message; state.clients=[]; notify('Clients : '+clientsRes.error.message,'error'); } else { state.clientError=null; state.clients=clientsRes.data||[]; }
     if(salesRes.error) notify('Historique : '+salesRes.error.message,'error'); else state.sales=salesRes.data||[];
+    if(settingsRes.error){ state.settingsError=settingsRes.error.message; state.loyaltyDiscountPercent=10; } else { state.settingsError=null; state.loyaltyDiscountPercent=Number(settingsRes.data?.loyalty_discount_percent ?? 10); }
     state.busy=false;
   }
 
@@ -246,7 +250,8 @@
     const selectedClient=state.clients.find(c=>c.id===state.selectedClientId)||null;
     const loyalty=selectedClient?loyaltyInfo(selectedClient.id):{completed:0,hasPrestation:false,currentAppointment:0,eligible:false};
     const baseTotal=round2(state.cart.reduce((a,l)=>a+Number(l.item.price)*l.qty,0));
-    const loyaltyTotal=loyalty.eligible?round2(baseTotal*0.90):baseTotal;
+    const loyaltyPct=loyaltyPercent(), loyaltyPctText=percentLabel(loyaltyPct);
+    const loyaltyTotal=loyalty.eligible?round2(baseTotal*(1-loyaltyPct/100)):baseTotal;
     const entered=state.manualTotal===null?loyaltyTotal:Math.min(loyaltyTotal,Math.max(0,round2(state.manualTotal)));
     const discount=Math.max(0,round2(baseTotal-entered));
     const discountPct=baseTotal?Math.round(discount/baseTotal*100):0;
@@ -254,10 +259,10 @@
     const canSave=state.cart.length>0 && !!selectedClient && !!state.payment;
     const clientOptions=state.clients.map(c=>`<option value="${c.id}" ${c.id===state.selectedClientId?'selected':''}>${esc(clientCode(c)+' - '+clientName(c))}</option>`).join('');
     const loyaltyText=selectedClient ? (loyalty.completed>=5
-      ? `<div class="loyalty-banner active">★ Fidélité active : 10 % de remise automatique · ${loyalty.completed} RDV réalisés</div>`
+      ? `<div class="loyalty-banner active">★ Fidélité active : ${loyaltyPctText} % de remise automatique · ${loyalty.completed} RDV réalisés</div>`
       : loyalty.eligible
-        ? `<div class="loyalty-banner active">★ ${loyalty.currentAppointment}e RDV : 10 % de remise appliquée automatiquement</div>`
-        : `<div class="loyalty-banner">${loyalty.completed} RDV réalisé${loyalty.completed>1?'s':''} · ${5-loyalty.completed} avant la remise fidélité de 10 %</div>`)
+        ? `<div class="loyalty-banner active">★ ${loyalty.currentAppointment}e RDV : ${loyaltyPctText} % de remise appliquée automatiquement</div>`
+        : `<div class="loyalty-banner">${loyalty.completed} RDV réalisé${loyalty.completed>1?'s':''} · ${5-loyalty.completed} avant la remise fidélité de ${loyaltyPctText} %</div>`)
       : '';
     const discountText=discount>0
       ? `${loyalty.eligible?'Remise fidélité incluse · ':''}Remise totale : −${euro(discount)} (${discountPct} %)`
@@ -270,7 +275,7 @@
       <div class="checkout-step"><div class="step-title"><span>1</span><strong>Client</strong></div><div class="client-select-row"><select id="clientSelect" ${state.clientError?'disabled':''}><option value="">Sélectionner un client…</option>${clientOptions}</select><button id="newClientFromSale" class="secondary" type="button" ${state.clientError?'disabled':''}>+ Nouveau</button></div>${selectedClient?`<div class="selected-client"><strong>${esc(clientCode(selectedClient)+' - '+clientName(selectedClient))}</strong><span>${esc(selectedClient.email||'Pas d’e-mail')}${selectedClient.phone?' · '+esc(selectedClient.phone):''}</span></div>${loyaltyText}`:'<div class="locked-hint">Le client doit être sélectionné ou créé avant le paiement.</div>'}</div>
       <div class="cart-lines">${state.cart.length?state.cart.map((l,i)=>`<div class="cart-line"><div class="cart-line-head"><strong>${esc(l.item.name)}</strong><b>${euro(l.item.price*l.qty)}</b></div><div class="qty"><button data-minus="${i}">−</button><strong>${l.qty}</strong><button data-plus="${i}">+</button><span>${euro(l.item.price)} / unité</span></div></div>`).join(''):'<div class="empty">Le panier est vide.</div>'}</div>
       <div class="cart-subtotal"><span>Sous-total</span><strong>${euro(baseTotal)}</strong></div>
-      <div class="manual-total-block"><label for="manualTotal">Total à payer <small>${loyalty.eligible?'La remise fidélité de 10 % est automatique. Tu peux encore diminuer le total.':'Modifiable pour appliquer une remise.'}</small></label><div class="manual-total-input"><input id="manualTotal" inputmode="decimal" autocomplete="off" value="${entered.toFixed(2).replace('.',',')}" ${state.cart.length?'':'disabled'}><span>€</span></div><div id="discountInfo" class="discount-info ${discount>0?'active':''}">${discountText}</div>${discount>0?`<button id="resetDiscount" class="text-btn reset-discount" type="button">${loyalty.eligible?'Revenir à la remise fidélité':'Annuler la remise'}</button>`:''}</div>
+      <div class="manual-total-block"><label for="manualTotal">Total à payer <small>${loyalty.eligible?`La remise fidélité de ${loyaltyPctText} % est automatique. Tu peux encore diminuer le total.`:'Modifiable pour appliquer une remise.'}</small></label><div class="manual-total-input"><input id="manualTotal" inputmode="decimal" autocomplete="off" value="${entered.toFixed(2).replace('.',',')}" ${state.cart.length?'':'disabled'}><span>€</span></div><div id="discountInfo" class="discount-info ${discount>0?'active':''}">${discountText}</div>${discount>0?`<button id="resetDiscount" class="text-btn reset-discount" type="button">${loyalty.eligible?'Revenir à la remise fidélité':'Annuler la remise'}</button>`:''}</div>
       <label style="margin-top:12px">Date<input id="saleDate" type="date" value="${state.saleDate}"></label>
       <div class="checkout-step payment-step ${canChoosePayment?'':'locked'}"><div class="step-title"><span>2</span><strong>Mode de paiement</strong></div>${canChoosePayment?'':'<div class="locked-hint">Sélectionne d’abord le client.</div>'}<div class="pay-grid">${PAYMENTS.map(p=>`<button class="pay-btn ${state.payment===p.id?'active':''}" data-pay="${p.id}" ${canChoosePayment?'':'disabled'}>${p.icon} ${p.label}</button>`).join('')}</div></div>
       <label>Remarque<textarea id="saleNote" placeholder="Facultatif">${esc(state.note)}</textarea></label><button id="saveSale" class="primary full" style="margin-top:12px" ${canSave?'':'disabled'}>Enregistrer la vente</button></aside></div>`;
@@ -306,7 +311,7 @@
     if(!client){ notify('Sélectionne ou crée le client avant de valider la vente.','error'); return; }
     if(!state.payment){ notify('Sélectionne le moyen de paiement.','error'); return; }
     const baseTotal=round2(state.cart.reduce((a,l)=>a+Number(l.item.price)*l.qty,0));
-    const loyalty=loyaltyInfo(client.id), loyaltyTotal=loyalty.eligible?round2(baseTotal*0.90):baseTotal;
+    const loyalty=loyaltyInfo(client.id), loyaltyPct=loyaltyPercent(), loyaltyPctText=percentLabel(loyaltyPct), loyaltyTotal=loyalty.eligible?round2(baseTotal*(1-loyaltyPct/100)):baseTotal;
     const finalTotal=state.manualTotal===null?loyaltyTotal:Math.min(loyaltyTotal,Math.max(0,round2(state.manualTotal)));
     const btn=document.getElementById('saveSale'); btn.disabled=true; btn.textContent='Enregistrement…';
     const dt=new Date(`${state.saleDate}T12:00:00`);
@@ -318,9 +323,9 @@
     if(lineErr){await sb.from('sales').delete().eq('id',sale.id);notify(lineErr.message,'error');renderSale();return;}
     const loyaltyApplied=loyalty.eligible;
     state.cart=[]; state.note=''; state.manualTotal=null; state.saleDate=toDateInput(new Date()); state.selectedClientId=null; state.payment=null;
-    state.saleSuccess=`Vente validée pour ${clientCode(client)} - ${clientName(client)}${loyaltyApplied?' · remise fidélité 10 %':''}`;
+    state.saleSuccess=`Vente validée pour ${clientCode(client)} - ${clientName(client)}${loyaltyApplied?` · remise fidélité ${loyaltyPctText} %`:''}`;
     await loadAll(); state.view='sale'; render();
-    notify(loyaltyApplied?`Vente validée · remise fidélité 10 % appliquée.`:finalTotal<baseTotal?`Vente validée avec une remise de ${euro(baseTotal-finalTotal)}.`:'Vente validée.');
+    notify(loyaltyApplied?`Vente validée · remise fidélité ${loyaltyPctText} % appliquée.`:finalTotal<baseTotal?`Vente validée avec une remise de ${euro(baseTotal-finalTotal)}.`:'Vente validée.');
   }
 
   function renderHistory(){
@@ -371,16 +376,29 @@
 
   function renderClients(){
     const clients=state.clients.slice().sort((a,b)=>Number(a.client_number)-Number(b.client_number));
-    document.getElementById('view').innerHTML=`<div class="admin-head"><div><h1 style="margin:0 0 5px">Fichier clients</h1><p class="muted" style="margin:0">Les anciens passages de septembre ne sont pas transformés en clients. Le compteur commence avec les nouvelles ventes liées à une fiche client.</p></div><button id="addClient" class="primary" ${state.clientError?'disabled':''}>+ Nouveau client</button></div>${state.clientError?`<div class="alert error">Le fichier clients n’est pas encore disponible : ${esc(state.clientError)}. Exécute <strong>supabase/update_v1.8_clients.sql</strong>.</div>`:`<div class="client-search"><input id="clientSearch" type="search" placeholder="Rechercher par nom, n° client, e-mail ou téléphone…"></div><div class="client-list">${clients.length?clients.map(c=>clientCard(c)).join(''):'<div class="empty">Aucun client. Le premier créé recevra le numéro CL0001.</div>'}</div>`}`;
+    const loyaltyPct=loyaltyPercent(), loyaltyPctText=percentLabel(loyaltyPct);
+    const settingsWarning=state.settingsError?`<div class="alert error">Le réglage du pourcentage fidélité n’est pas encore disponible dans Supabase. Exécute <strong>supabase/update_v1.9_loyalty_rate.sql</strong>. En attendant, l’application utilise 10 %.</div>`:'';
+    document.getElementById('view').innerHTML=`<div class="admin-head"><div><h1 style="margin:0 0 5px">Fichier clients</h1><p class="muted" style="margin:0">Les anciens passages de septembre ne sont pas transformés en clients. Le compteur commence avec les nouvelles ventes liées à une fiche client.</p></div><button id="addClient" class="primary" ${state.clientError?'disabled':''}>+ Nouveau client</button></div>${state.clientError?`<div class="alert error">Le fichier clients n’est pas encore disponible : ${esc(state.clientError)}. Exécute <strong>supabase/update_v1.8_clients.sql</strong>.</div>`:`${settingsWarning}<section class="loyalty-settings"><div><strong>Remise fidélité à partir du 5e RDV</strong><span>Ce taux s’applique automatiquement au 5e RDV et aux suivants.</span></div><div class="loyalty-rate-control"><input id="loyaltyRate" type="number" min="0" max="100" step="0.5" value="${loyaltyPct}" ${state.settingsError?'disabled':''}><span>%</span><button id="saveLoyaltyRate" class="secondary" type="button" ${state.settingsError?'disabled':''}>Enregistrer</button></div></section><div class="client-search"><input id="clientSearch" type="search" placeholder="Rechercher par nom, n° client, e-mail ou téléphone…"></div><div class="client-list">${clients.length?clients.map(c=>clientCard(c)).join(''):'<div class="empty">Aucun client. Le premier créé recevra le numéro CL0001.</div>'}</div>`}`;
     const add=document.getElementById('addClient'); if(add) add.onclick=()=>openClientModal();
+    const saveRate=document.getElementById('saveLoyaltyRate'); if(saveRate) saveRate.onclick=saveLoyaltyRate;
     document.querySelectorAll('[data-edit-client]').forEach(b=>b.onclick=()=>openClientModal(state.clients.find(c=>c.id===b.dataset.editClient)));
     const search=document.getElementById('clientSearch');
     if(search) search.oninput=e=>{ const q=e.target.value.trim().toLowerCase(); document.querySelectorAll('.client-card').forEach(card=>{card.hidden=q&&!card.dataset.search.includes(q);}); };
   }
+  async function saveLoyaltyRate(){
+    const input=document.getElementById('loyaltyRate');
+    const value=Number(String(input?.value??'').replace(',','.'));
+    if(!Number.isFinite(value)||value<0||value>100){ notify('Indique un pourcentage compris entre 0 et 100.','error'); return; }
+    const rate=Math.round(value*100)/100;
+    const btn=document.getElementById('saveLoyaltyRate'); if(btn){btn.disabled=true;btn.textContent='Enregistrement…';}
+    const {error}=await sb.from('user_settings').upsert({user_id:state.user.id,loyalty_discount_percent:rate},{onConflict:'user_id'});
+    if(error){ notify('Réglage fidélité : '+error.message,'error'); if(btn){btn.disabled=false;btn.textContent='Enregistrer';} return; }
+    state.loyaltyDiscountPercent=rate; state.settingsError=null; renderClients(); notify(`Remise fidélité réglée à ${percentLabel(rate)} %.`);
+  }
   function clientCard(c){
-    const n=clientAppointmentCount(c.id), active=n>=5;
+    const n=clientAppointmentCount(c.id), active=n>=5, pct=percentLabel(loyaltyPercent());
     const search=[clientCode(c),clientName(c),c.email||'',c.phone||''].join(' ').toLowerCase();
-    return `<article class="client-card" data-search="${esc(search)}"><div class="client-number">${esc(clientCode(c))}</div><div class="client-card-main"><strong>${esc(clientName(c))}</strong><span>${esc(c.email||'Pas d’e-mail')}${c.phone?' · '+esc(c.phone):' · Pas de téléphone'}</span></div><div class="client-rdv ${active?'active':''}"><strong>${n} RDV</strong><span>${active?'−10 % actif':`${Math.max(0,5-n)} avant −10 %`}</span></div><button class="icon-btn" type="button" data-edit-client="${c.id}" title="Modifier">✎</button></article>`;
+    return `<article class="client-card" data-search="${esc(search)}"><div class="client-number">${esc(clientCode(c))}</div><div class="client-card-main"><strong>${esc(clientName(c))}</strong><span>${esc(c.email||'Pas d’e-mail')}${c.phone?' · '+esc(c.phone):' · Pas de téléphone'}</span></div><div class="client-rdv ${active?'active':''}"><strong>${n} RDV</strong><span>${active?`−${pct} % actif`:`${Math.max(0,5-n)} avant −${pct} %`}</span></div><button class="icon-btn" type="button" data-edit-client="${c.id}" title="Modifier">✎</button></article>`;
   }
   function openClientModal(client=null,{selectAfter=false}={}){
     const wrap=document.createElement('div'); wrap.className='modal-backdrop';
