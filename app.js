@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.9.0';
+  const VERSION = '1.10.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -36,7 +36,7 @@
   const euro = n => new Intl.NumberFormat('fr-BE',{style:'currency',currency:'EUR'}).format(Number(n||0));
   const esc = s => String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   function toDateInput(d){ const x=new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`; }
-  function dateLabel(v){ return new Intl.DateTimeFormat('fr-BE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(v)); }
+  function saleHistoryDateTime(s){ const d=new Date(s.sale_date); const encoded=new Date(s.created_at||s.sale_date); const date=new Intl.DateTimeFormat('fr-BE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(d); const time=new Intl.DateTimeFormat('fr-BE',{hour:'2-digit',minute:'2-digit',hour12:false}).format(encoded); return `${date} · ${time}`; }
   function monthLabel(){ return new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(state.month); }
   function sameMonth(v){ const d=new Date(v); return d.getFullYear()===state.month.getFullYear() && d.getMonth()===state.month.getMonth(); }
   function payInfo(id){ return PAYMENTS.find(p=>p.id===id) || {id,label:id,icon:'?'}; }
@@ -340,7 +340,7 @@
     return `<details class="pay-group" open><summary><div class="pay-icon">${p.icon}</div><div class="pay-title"><strong>${p.label}</strong><span>${sales.length} vente${sales.length>1?'s':''}</span></div><b>${euro(total)}</b></summary><div class="pay-body">${sales.length?sales.map(s=>{
       const raw=rawSaleTotal(s), paid=saleTotal(s), discount=saleDiscount(s), note=saleDisplayNote(s), c=clientForSale(s);
       const title=c?`${clientCode(c)} - ${clientName(c)}`:(note||'Ancienne vente (sans client)');
-      return `<details class="sale-card"><summary><div><strong>${esc(title)}</strong><span>${dateLabel(s.sale_date)}</span></div><b>${euro(paid)}</b></summary><div class="sale-details">${c?`<div class="history-client"><strong>${esc(clientCode(c)+' - '+clientName(c))}</strong><span>${esc(c.email||'')}${c.phone?' · '+esc(c.phone):''}</span></div>`:''}${note&&c?`<div class="history-note">Remarque : ${esc(note)}</div>`:''}${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div class="sale-line-main"><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)} · ${l.type_snapshot==='produit'?'Produit':'Prestation'}</small></div><div class="sale-line-actions"><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b><button class="history-delete-line" type="button" data-delete-line="${l.id}" data-sale-id="${s.id}" title="Supprimer cette ligne">×</button></div></div>`).join('')}${discount>0?`<div class="history-discount"><div><span>Sous-total</span><b>${euro(raw)}</b></div><div><span>Remise appliquée</span><b>−${euro(discount)}</b></div><div class="history-paid"><span>Total payé</span><b>${euro(paid)}</b></div></div>`:''}<div class="sale-footer"><button class="danger-btn compact" type="button" data-delete-sale="${s.id}">Supprimer la vente complète</button></div></div></details>`;
+      return `<details class="sale-card"><summary><div><strong>${esc(title)}</strong><span>${saleHistoryDateTime(s)}</span></div><b>${euro(paid)}</b></summary><div class="sale-details">${c?`<div class="history-client"><strong>${esc(clientCode(c)+' - '+clientName(c))}</strong><span>${esc(c.email||'')}${c.phone?' · '+esc(c.phone):''}</span></div>`:''}${note&&c?`<div class="history-note">Remarque : ${esc(note)}</div>`:''}${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div class="sale-line-main"><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)} · ${l.type_snapshot==='produit'?'Produit':'Prestation'}</small></div><div class="sale-line-actions"><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b><button class="history-delete-line" type="button" data-delete-line="${l.id}" data-sale-id="${s.id}" title="Supprimer cette ligne">×</button></div></div>`).join('')}${discount>0?`<div class="history-discount"><div><span>Sous-total</span><b>${euro(raw)}</b></div><div><span>Remise appliquée</span><b>−${euro(discount)}</b></div><div class="history-paid"><span>Total payé</span><b>${euro(paid)}</b></div></div>`:''}<div class="sale-footer"><button class="danger-btn compact" type="button" data-delete-sale="${s.id}">Supprimer la vente complète</button></div></div></details>`;
     }).join(''):'<div class="empty">Aucune vente.</div>'}</div></details>`;
   }
   async function deleteHistorySale(id){

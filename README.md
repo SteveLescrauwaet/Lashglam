@@ -1,6 +1,13 @@
-# Suivi Beauty PWA — v1.9
+# Suivi Beauty PWA — v1.10
 
 Version directe pour GitHub Pages : aucun npm, aucun build et aucune GitHub Action n’est nécessaire.
+
+
+## Nouveauté v1.10
+
+- Dans l’**Historique**, chaque vente affiche maintenant automatiquement l’**heure à laquelle elle a été encodée** (HH:mm).
+- La date reste la date de vente sélectionnée dans **Nouvelle vente**.
+- Aucune mise à jour SQL Supabase n’est nécessaire pour cette fonction : l’heure d’encodage utilise le champ `created_at` déjà présent.
 
 ## Nouveauté v1.9
 
