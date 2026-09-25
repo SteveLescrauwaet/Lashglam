@@ -1,3 +1,9 @@
+# Beauty CA PWA v1.12
+
+Mise à jour : dans **Nouvelle vente**, le client peut être recherché directement en tapant son prénom, son nom ou son numéro client. Les résultats apparaissent sous le champ et un clic sélectionne le client. La touche **Entrée** sélectionne également le premier résultat.
+
+Aucune modification SQL Supabase n'est nécessaire par rapport à la v1.11.
+
 # Suivi Beauty PWA — v1.11
 
 Version directe pour GitHub Pages : aucun npm, aucun build et aucune GitHub Action n’est nécessaire.

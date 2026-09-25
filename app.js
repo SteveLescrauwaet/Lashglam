@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.10.0';
+  const VERSION = '1.12.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -271,7 +271,7 @@
       <div class="checkout"><section><div class="catalog-tabs"><button id="tabPrest" class="${state.catalogTab==='prestation'?'primary':'secondary'}">Prestations</button><button id="tabProd" class="${state.catalogTab==='produit'?'primary':'secondary'}">Produits</button></div>
       <div class="catalog-grid">${items.length?items.map(item=>catalogCard(item)).join(''):'<div class="empty">Aucun élément dans cette catégorie.</div>'}</div></section>
       <aside class="cart"><h2>Panier</h2>
-      <div class="checkout-step"><div class="step-title"><span>1</span><strong>Client</strong></div><div class="client-select-row client-search-sale-row"><div class="client-search-sale"><input id="clientSearchSale" type="search" autocomplete="off" placeholder="Tape le nom, prénom ou n° client…" ${state.clientError?'disabled':''}><div id="clientSearchResults" class="client-search-results"></div></div><button id="newClientFromSale" class="secondary" type="button" ${state.clientError?'disabled':''}>+ Nouveau</button></div>${selectedClient?`<div class="selected-client"><div><strong>${esc(clientCode(selectedClient)+' - '+clientName(selectedClient))}</strong><span>${esc(selectedClient.email||'Pas d’e-mail')}${selectedClient.phone?' · '+esc(selectedClient.phone):''}</span></div><button id="clearSelectedClient" class="text-btn client-change-btn" type="button">Changer</button></div>${loyaltyText}`:'<div class="locked-hint">Tape le nom du client puis sélectionne-le avant de choisir le paiement.</div>'}</div>
+      <div class="checkout-step client-step"><div class="step-title"><span>1</span><strong>Client</strong></div><label class="client-search-label" for="clientSearchSale">Rechercher un client</label><div class="client-select-row client-search-sale-row"><div class="client-search-sale"><input id="clientSearchSale" type="search" autocomplete="off" spellcheck="false" placeholder="Tape le nom du client (ex. Flora)…" ${state.clientError?'disabled':''}><div id="clientSearchResults" class="client-search-results"></div></div><button id="newClientFromSale" class="secondary" type="button" ${state.clientError?'disabled':''}>+ Nouveau</button></div><div class="client-search-help">Tu peux rechercher par prénom, nom ou n° client. Clique sur le résultat pour le sélectionner.</div>${selectedClient?`<div class="selected-client"><div><small>Client sélectionné</small><strong>${esc(clientCode(selectedClient)+' - '+clientName(selectedClient))}</strong><span>${esc(selectedClient.email||'Pas d’e-mail')}${selectedClient.phone?' · '+esc(selectedClient.phone):''}</span></div><button id="clearSelectedClient" class="text-btn client-change-btn" type="button">Changer</button></div>${loyaltyText}`:'<div class="locked-hint">Commence à taper le nom du client ci-dessus, puis sélectionne-le dans la liste.</div>'}</div>
       <div class="cart-lines">${state.cart.length?state.cart.map((l,i)=>`<div class="cart-line"><div class="cart-line-head"><strong>${esc(l.item.name)}</strong><b>${euro(l.item.price*l.qty)}</b></div><div class="qty"><button data-minus="${i}">−</button><strong>${l.qty}</strong><button data-plus="${i}">+</button><span>${euro(l.item.price)} / unité</span></div></div>`).join(''):'<div class="empty">Le panier est vide.</div>'}</div>
       <div class="cart-subtotal"><span>Sous-total</span><strong>${euro(baseTotal)}</strong></div>
       <div class="manual-total-block"><label for="manualTotal">Total à payer <small>${loyalty.eligible?`La remise fidélité de ${loyaltyPctText} % est automatique. Tu peux encore diminuer le total.`:'Modifiable pour appliquer une remise.'}</small></label><div class="manual-total-input"><input id="manualTotal" inputmode="decimal" autocomplete="off" value="${entered.toFixed(2).replace('.',',')}" ${state.cart.length?'':'disabled'}><span>€</span></div><div id="discountInfo" class="discount-info ${discount>0?'active':''}">${discountText}</div>${discount>0?`<button id="resetDiscount" class="text-btn reset-discount" type="button">${loyalty.eligible?'Revenir à la remise fidélité':'Annuler la remise'}</button>`:''}</div>
@@ -288,32 +288,54 @@
     const clientSearchInput=document.getElementById('clientSearchSale');
     const clientSearchResults=document.getElementById('clientSearchResults');
     const normalizeText=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    let currentClientMatches=[];
+    const selectClientFromSearch=id=>{
+      const client=state.clients.find(c=>c.id===id);
+      if(!client)return;
+      state.selectedClientId=id;
+      state.payment=null;
+      state.manualTotal=null;
+      state.saleSuccess='';
+      renderSale();
+    };
     const renderClientSearchResults=(query='',showAll=false)=>{
       if(!clientSearchResults)return;
       const q=normalizeText(query.trim());
       let matches=state.clients.slice().sort((a,b)=>clientName(a).localeCompare(clientName(b),'fr',{sensitivity:'base'}));
       if(q){
-        matches=matches.filter(c=>normalizeText([clientCode(c),clientName(c),c.first_name,c.last_name,c.email,c.phone].join(' ')).includes(q));
+        const tokens=q.split(/\s+/).filter(Boolean);
+        matches=matches.filter(c=>{
+          const haystack=normalizeText([clientCode(c),c.first_name,c.last_name,clientName(c),c.email,c.phone].join(' '));
+          return tokens.every(t=>haystack.includes(t));
+        });
+        matches.sort((a,b)=>{
+          const an=normalizeText(clientName(a)), bn=normalizeText(clientName(b));
+          const as=an.startsWith(q)?0:1, bs=bn.startsWith(q)?0:1;
+          return as-bs || an.localeCompare(bn,'fr');
+        });
       } else if(!showAll){
+        currentClientMatches=[];
         clientSearchResults.classList.remove('open');
         clientSearchResults.innerHTML='';
         return;
       }
-      matches=matches.slice(0,10);
-      clientSearchResults.innerHTML=matches.length?matches.map(c=>`<button type="button" class="client-search-result" data-client-result="${c.id}"><strong>${esc(clientCode(c)+' - '+clientName(c))}</strong><span>${esc(c.email||'')}${c.phone?(c.email?' · ':'')+esc(c.phone):''}</span></button>`).join(''):`<div class="client-search-empty">Aucun client trouvé.</div>`;
+      currentClientMatches=matches.slice(0,12);
+      clientSearchResults.innerHTML=currentClientMatches.length?currentClientMatches.map(c=>`<button type="button" class="client-search-result" data-client-result="${c.id}"><strong>${esc(clientName(c))}</strong><span>${esc(clientCode(c))}${c.phone?' · '+esc(c.phone):''}${c.email?' · '+esc(c.email):''}</span></button>`).join(''):`<div class="client-search-empty">Aucun client trouvé. Utilise « + Nouveau » pour le créer.</div>`;
       clientSearchResults.classList.add('open');
-      clientSearchResults.querySelectorAll('[data-client-result]').forEach(btn=>btn.onclick=()=>{
-        state.selectedClientId=btn.dataset.clientResult;
-        state.payment=null;
-        state.manualTotal=null;
-        state.saleSuccess='';
-        renderSale();
-      });
+      clientSearchResults.querySelectorAll('[data-client-result]').forEach(btn=>btn.onclick=()=>selectClientFromSearch(btn.dataset.clientResult));
     };
     if(clientSearchInput){
       clientSearchInput.oninput=e=>renderClientSearchResults(e.target.value,true);
       clientSearchInput.onfocus=e=>renderClientSearchResults(e.target.value,true);
-      clientSearchInput.onkeydown=e=>{ if(e.key==='Escape'){clientSearchResults.classList.remove('open'); clientSearchInput.blur();} };
+      clientSearchInput.onkeydown=e=>{
+        if(e.key==='Escape'){
+          clientSearchResults.classList.remove('open');
+          clientSearchInput.blur();
+        } else if(e.key==='Enter'){
+          e.preventDefault();
+          if(currentClientMatches.length) selectClientFromSearch(currentClientMatches[0].id);
+        }
+      };
     }
     document.addEventListener('click',function closeClientSearch(ev){
       if(!clientSearchResults || !clientSearchResults.classList.contains('open'))return;

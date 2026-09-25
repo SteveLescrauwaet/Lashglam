@@ -95,3 +95,15 @@ button:disabled,input:disabled,select:disabled{opacity:.48;cursor:not-allowed}
 .selected-client>div{display:grid;gap:2px;min-width:0}
 .client-change-btn{font-size:11px;white-space:nowrap}
 @media(max-width:700px){.client-search-results{position:fixed;left:14px;right:14px;top:auto;max-height:45vh}.selected-client{grid-template-columns:1fr auto}}
+
+/* v1.12 - recherche client plus directe dans Nouvelle vente */
+.client-step{overflow:visible}
+.client-search-label{display:block;margin:8px 0 6px;font-size:12px;font-weight:700;color:var(--rose2)}
+.client-search-sale-row{align-items:stretch}
+.client-search-sale input{min-height:46px;font-size:15px;border:1px solid rgba(190,126,145,.52);background:#111}
+.client-search-sale input:focus{border-color:var(--rose);box-shadow:0 0 0 3px rgba(190,126,145,.14);outline:none}
+.client-search-help{margin-top:6px;font-size:11px;line-height:1.35;color:var(--muted)}
+.selected-client small{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.client-search-result strong{font-size:14px}
+.client-search-result span{font-size:11px}
+@media(max-width:700px){.client-search-sale-row{grid-template-columns:1fr auto}.client-search-sale input{font-size:16px}}
