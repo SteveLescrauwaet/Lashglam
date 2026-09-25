@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.6.0';
+  const VERSION = '1.7.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -63,6 +63,90 @@
   function saleDiscount(s){ return Math.max(0,round2(rawSaleTotal(s)-saleTotal(s))); }
   function parseMoney(v){ const n=Number(String(v??'').replace(/\s/g,'').replace(',','.')); return Number.isFinite(n)?round2(n):null; }
   function monthSales(){ return state.sales.filter(s=>sameMonth(s.sale_date)); }
+  function saleBreakdown(s){
+    let rawPrest=0, rawProd=0;
+    (s.sale_lines||[]).forEach(l=>{
+      const v=Number(l.unit_price)*Number(l.quantity);
+      if(l.type_snapshot==='prestation') rawPrest+=v; else rawProd+=v;
+    });
+    const raw=round2(rawPrest+rawProd), paid=saleTotal(s), ratio=raw>0?paid/raw:0;
+    return {raw,paid,discount:Math.max(0,round2(raw-paid)),prest:round2(rawPrest*ratio),prod:round2(rawProd*ratio),ratio};
+  }
+  function exportMonthExcel(){
+    if(!window.XLSX){ notify('Le module Excel n’a pas pu être chargé. Vérifie la connexion Internet puis recharge la page.','error'); return; }
+    const sales=monthSales().slice().sort((a,b)=>new Date(a.sale_date)-new Date(b.sale_date));
+    let ca=0,prest=0,prod=0,discounts=0;
+    const payTotals=Object.fromEntries(PAYMENTS.map(p=>[p.id,0]));
+    sales.forEach(s=>{
+      const b=saleBreakdown(s); ca+=b.paid; prest+=b.prest; prod+=b.prod; discounts+=b.discount;
+      payTotals[s.payment_method]=(payTotals[s.payment_method]||0)+b.paid;
+    });
+    ca=round2(ca); prest=round2(prest); prod=round2(prod); discounts=round2(discounts);
+    const ym=`${state.month.getFullYear()}-${String(state.month.getMonth()+1).padStart(2,'0')}`;
+    const niceMonth=new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(state.month);
+
+    const summary=[
+      ['CHIFFRE D’AFFAIRES MENSUEL'],
+      ['Mois', niceMonth],
+      [],
+      ['Indicateur','Montant / valeur'],
+      ['Chiffre d’affaires',ca],
+      ['Prestations',prest],
+      ['Produits',prod],
+      ['Remises accordées',discounts],
+      ['Nombre de ventes',sales.length],
+      ['Panier moyen',sales.length?round2(ca/sales.length):0],
+      [],
+      ['Moyen de paiement','Montant','Part du CA'],
+      ...PAYMENTS.map(p=>[p.label,round2(payTotals[p.id]||0),ca?round2((payTotals[p.id]||0)/ca*100)/100:0])
+    ];
+    const wsSummary=XLSX.utils.aoa_to_sheet(summary);
+    wsSummary['!cols']=[{wch:28},{wch:20},{wch:14}];
+    wsSummary['!merges']=[XLSX.utils.decode_range('A1:C1')];
+    // Formats numériques : € et %.
+    ['B5','B6','B7','B8','B10','B13','B14','B15'].forEach(a=>{if(wsSummary[a]) wsSummary[a].z='#,##0.00 [$€-fr-BE]';});
+    ['C13','C14','C15'].forEach(a=>{if(wsSummary[a]) wsSummary[a].z='0.0%';});
+
+    const saleRows=[['Date','Heure','Cliente / remarque','Mode de paiement','Sous-total (€)','Remise (€)','Total payé (€)','Prestations encaissées (€)','Produits encaissés (€)','Nombre de lignes']];
+    sales.forEach(s=>{
+      const d=new Date(s.sale_date), b=saleBreakdown(s);
+      saleRows.push([
+        new Date(d.getFullYear(),d.getMonth(),d.getDate()),
+        `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+        saleDisplayNote(s),payInfo(s.payment_method).label,b.raw,b.discount,b.paid,b.prest,b.prod,(s.sale_lines||[]).length
+      ]);
+    });
+    const wsSales=XLSX.utils.aoa_to_sheet(saleRows);
+    wsSales['!cols']=[{wch:12},{wch:8},{wch:34},{wch:18},{wch:16},{wch:14},{wch:16},{wch:24},{wch:21},{wch:16}];
+    wsSales['!autofilter']={ref:`A1:J${Math.max(1,saleRows.length)}`};
+    for(let r=2;r<=saleRows.length;r++){
+      if(wsSales[`A${r}`]) wsSales[`A${r}`].z='dd/mm/yyyy';
+      ['E','F','G','H','I'].forEach(c=>{if(wsSales[`${c}${r}`]) wsSales[`${c}${r}`].z='#,##0.00 [$€-fr-BE]';});
+    }
+
+    const detailRows=[['Date','Heure','Type','Désignation','Quantité','Prix unitaire (€)','Montant brut (€)','Remise répartie (€)','Montant encaissé (€)','Mode de paiement','Cliente / remarque']];
+    sales.forEach(s=>{
+      const d=new Date(s.sale_date), b=saleBreakdown(s), note=saleDisplayNote(s), pay=payInfo(s.payment_method).label;
+      (s.sale_lines||[]).forEach(l=>{
+        const gross=round2(Number(l.unit_price)*Number(l.quantity)), net=round2(gross*b.ratio), lineDiscount=Math.max(0,round2(gross-net));
+        detailRows.push([new Date(d.getFullYear(),d.getMonth(),d.getDate()),`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,l.type_snapshot==='produit'?'Produit':'Prestation',l.name_snapshot,Number(l.quantity),Number(l.unit_price),gross,lineDiscount,net,pay,note]);
+      });
+    });
+    const wsDetail=XLSX.utils.aoa_to_sheet(detailRows);
+    wsDetail['!cols']=[{wch:12},{wch:8},{wch:13},{wch:38},{wch:10},{wch:17},{wch:17},{wch:19},{wch:20},{wch:18},{wch:34}];
+    wsDetail['!autofilter']={ref:`A1:K${Math.max(1,detailRows.length)}`};
+    for(let r=2;r<=detailRows.length;r++){
+      if(wsDetail[`A${r}`]) wsDetail[`A${r}`].z='dd/mm/yyyy';
+      ['F','G','H','I'].forEach(c=>{if(wsDetail[`${c}${r}`]) wsDetail[`${c}${r}`].z='#,##0.00 [$€-fr-BE]';});
+    }
+
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,wsSummary,'Résumé');
+    XLSX.utils.book_append_sheet(wb,wsSales,'Ventes');
+    XLSX.utils.book_append_sheet(wb,wsDetail,'Détail');
+    XLSX.writeFile(wb,`CA_${ym}.xlsx`,{compression:true});
+    notify(`Export Excel ${niceMonth} créé.`);
+  }
   function notify(msg,type='success'){ const old=document.querySelector('.toast'); if(old) old.remove(); const e=document.createElement('div'); e.className=`toast alert ${type}`; e.textContent=msg; Object.assign(e.style,{position:'fixed',right:'16px',bottom:'16px',zIndex:'500',maxWidth:'360px',boxShadow:'0 12px 40px rgba(0,0,0,.4)'}); document.body.appendChild(e); setTimeout(()=>e.remove(),3200); }
 
   async function init(){
@@ -134,18 +218,14 @@
 
   function renderDashboard(){
     const sales=monthSales(); let ca=0,prest=0,prod=0;
-    sales.forEach(s=>{
-      let rawPrest=0,rawProd=0;
-      (s.sale_lines||[]).forEach(l=>{ const v=Number(l.unit_price)*Number(l.quantity); if(l.type_snapshot==='prestation')rawPrest+=v; else rawProd+=v; });
-      const raw=rawPrest+rawProd, paid=saleTotal(s), ratio=raw>0?paid/raw:0;
-      ca+=paid; prest+=rawPrest*ratio; prod+=rawProd*ratio;
-    });
+    sales.forEach(s=>{ const b=saleBreakdown(s); ca+=b.paid; prest+=b.prest; prod+=b.prod; });
     ca=round2(ca); prest=round2(prest); prod=round2(prod);
     const payTotals=Object.fromEntries(PAYMENTS.map(p=>[p.id,0])); sales.forEach(s=>payTotals[s.payment_method]=(payTotals[s.payment_method]||0)+saleTotal(s));
-    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Tableau de bord</h1><p>Analyse mensuelle de ton activité.</p></div>${monthNavHTML()}</div>
+    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Tableau de bord</h1><p>Analyse mensuelle de ton activité.</p></div><div class="dashboard-tools">${monthNavHTML()}<button id="exportExcel" class="primary export-btn" type="button">↓ Exporter Excel</button></div></div>
       <div class="metric-grid"><div class="metric"><span>Chiffre d’affaires</span><strong>${euro(ca)}</strong></div><div class="metric"><span>Prestations</span><strong>${euro(prest)}</strong></div><div class="metric"><span>Produits</span><strong>${euro(prod)}</strong></div><div class="metric"><span>Ventes</span><strong>${sales.length}</strong></div><div class="metric"><span>Panier moyen</span><strong>${euro(sales.length?ca/sales.length:0)}</strong></div></div>
       <section class="panel"><h2>Moyens de paiement</h2><div class="payment-bars">${PAYMENTS.map(p=>{const v=payTotals[p.id]||0,pct=ca?Math.round(v/ca*100):0;return `<div class="payment-row"><strong>${p.icon} ${p.label}</strong><div class="bar"><i style="width:${pct}%"></i></div><span>${euro(v)} · ${pct}%</span></div>`}).join('')}</div></section>`;
     bindMonthNav();
+    document.getElementById('exportExcel').onclick=exportMonthExcel;
   }
 
   function renderSale(){

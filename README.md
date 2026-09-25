@@ -58,3 +58,9 @@ Version : 1.2.0
 - Le sous-total, la remise et le total payé apparaissent dans l’historique.
 - Le chiffre d’affaires et les moyens de paiement utilisent automatiquement le montant réellement payé.
 - Aucune modification SQL supplémentaire n’est nécessaire.
+
+
+## Version 1.7.0 – export Excel
+Dans **Tableau de bord**, choisis le mois avec les flèches puis clique sur **Exporter Excel**.
+Le fichier `CA_YYYY-MM.xlsx` contient trois onglets : **Résumé**, **Ventes** et **Détail**. Il reprend le CA, prestations, produits, remises, moyens de paiement et le détail de chaque vente.
+Aucune modification SQL Supabase n'est nécessaire.

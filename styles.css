@@ -48,3 +48,8 @@ label{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:13
 .history-discount>div b{color:var(--text)}
 .history-discount .history-paid{padding-top:6px;border-top:1px solid rgba(183,110,121,.18);font-size:13px;color:var(--text);font-weight:850}
 .history-discount .history-paid b{color:var(--rose2)}
+
+/* v1.7 - export mensuel Excel */
+.dashboard-tools{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+.export-btn{white-space:nowrap;min-height:40px}
+@media(max-width:620px){.dashboard-tools{width:100%;justify-content:space-between}.dashboard-tools .month-nav{flex:1}.dashboard-tools .month-label{min-width:0;flex:1}.export-btn{width:100%}}
