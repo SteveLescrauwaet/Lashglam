@@ -80,3 +80,18 @@ button:disabled,input:disabled,select:disabled{opacity:.48;cursor:not-allowed}
 .loyalty-settings>div:first-child{display:grid;gap:3px}.loyalty-settings>div:first-child strong{color:var(--rose2)}.loyalty-settings>div:first-child span{color:var(--muted);font-size:12px}
 .loyalty-rate-control{display:flex;align-items:center;gap:7px}.loyalty-rate-control input{width:90px;text-align:right;font-weight:900;color:var(--rose2)}.loyalty-rate-control>span{color:var(--rose2);font-weight:900}
 @media(max-width:650px){.loyalty-settings{align-items:stretch;flex-direction:column}.loyalty-rate-control{width:100%}.loyalty-rate-control input{flex:1}.loyalty-rate-control .secondary{flex:1}}
+
+/* v1.11 - Recherche rapide client dans Nouvelle vente */
+.client-search-sale{position:relative;min-width:0}
+.client-search-sale input{width:100%}
+.client-search-results{display:none;position:absolute;z-index:40;left:0;right:0;top:calc(100% + 6px);max-height:320px;overflow:auto;background:#171717;border:1px solid rgba(190,126,145,.35);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.45);padding:6px}
+.client-search-results.open{display:block}
+.client-search-result{width:100%;display:grid;gap:2px;text-align:left;padding:10px 11px;border:0;border-radius:9px;background:transparent;color:var(--text);cursor:pointer}
+.client-search-result:hover,.client-search-result:focus{background:rgba(190,126,145,.13);outline:none}
+.client-search-result strong{font-size:13px;color:var(--rose2)}
+.client-search-result span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.client-search-empty{padding:12px;color:var(--muted);font-size:12px;text-align:center}
+.selected-client{grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.selected-client>div{display:grid;gap:2px;min-width:0}
+.client-change-btn{font-size:11px;white-space:nowrap}
+@media(max-width:700px){.client-search-results{position:fixed;left:14px;right:14px;top:auto;max-height:45vh}.selected-client{grid-template-columns:1fr auto}}

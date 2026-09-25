@@ -257,7 +257,6 @@
     const discountPct=baseTotal?Math.round(discount/baseTotal*100):0;
     const canChoosePayment=!!selectedClient;
     const canSave=state.cart.length>0 && !!selectedClient && !!state.payment;
-    const clientOptions=state.clients.map(c=>`<option value="${c.id}" ${c.id===state.selectedClientId?'selected':''}>${esc(clientCode(c)+' - '+clientName(c))}</option>`).join('');
     const loyaltyText=selectedClient ? (loyalty.completed>=5
       ? `<div class="loyalty-banner active">★ Fidélité active : ${loyaltyPctText} % de remise automatique · ${loyalty.completed} RDV réalisés</div>`
       : loyalty.eligible
@@ -272,7 +271,7 @@
       <div class="checkout"><section><div class="catalog-tabs"><button id="tabPrest" class="${state.catalogTab==='prestation'?'primary':'secondary'}">Prestations</button><button id="tabProd" class="${state.catalogTab==='produit'?'primary':'secondary'}">Produits</button></div>
       <div class="catalog-grid">${items.length?items.map(item=>catalogCard(item)).join(''):'<div class="empty">Aucun élément dans cette catégorie.</div>'}</div></section>
       <aside class="cart"><h2>Panier</h2>
-      <div class="checkout-step"><div class="step-title"><span>1</span><strong>Client</strong></div><div class="client-select-row"><select id="clientSelect" ${state.clientError?'disabled':''}><option value="">Sélectionner un client…</option>${clientOptions}</select><button id="newClientFromSale" class="secondary" type="button" ${state.clientError?'disabled':''}>+ Nouveau</button></div>${selectedClient?`<div class="selected-client"><strong>${esc(clientCode(selectedClient)+' - '+clientName(selectedClient))}</strong><span>${esc(selectedClient.email||'Pas d’e-mail')}${selectedClient.phone?' · '+esc(selectedClient.phone):''}</span></div>${loyaltyText}`:'<div class="locked-hint">Le client doit être sélectionné ou créé avant le paiement.</div>'}</div>
+      <div class="checkout-step"><div class="step-title"><span>1</span><strong>Client</strong></div><div class="client-select-row client-search-sale-row"><div class="client-search-sale"><input id="clientSearchSale" type="search" autocomplete="off" placeholder="Tape le nom, prénom ou n° client…" ${state.clientError?'disabled':''}><div id="clientSearchResults" class="client-search-results"></div></div><button id="newClientFromSale" class="secondary" type="button" ${state.clientError?'disabled':''}>+ Nouveau</button></div>${selectedClient?`<div class="selected-client"><div><strong>${esc(clientCode(selectedClient)+' - '+clientName(selectedClient))}</strong><span>${esc(selectedClient.email||'Pas d’e-mail')}${selectedClient.phone?' · '+esc(selectedClient.phone):''}</span></div><button id="clearSelectedClient" class="text-btn client-change-btn" type="button">Changer</button></div>${loyaltyText}`:'<div class="locked-hint">Tape le nom du client puis sélectionne-le avant de choisir le paiement.</div>'}</div>
       <div class="cart-lines">${state.cart.length?state.cart.map((l,i)=>`<div class="cart-line"><div class="cart-line-head"><strong>${esc(l.item.name)}</strong><b>${euro(l.item.price*l.qty)}</b></div><div class="qty"><button data-minus="${i}">−</button><strong>${l.qty}</strong><button data-plus="${i}">+</button><span>${euro(l.item.price)} / unité</span></div></div>`).join(''):'<div class="empty">Le panier est vide.</div>'}</div>
       <div class="cart-subtotal"><span>Sous-total</span><strong>${euro(baseTotal)}</strong></div>
       <div class="manual-total-block"><label for="manualTotal">Total à payer <small>${loyalty.eligible?`La remise fidélité de ${loyaltyPctText} % est automatique. Tu peux encore diminuer le total.`:'Modifiable pour appliquer une remise.'}</small></label><div class="manual-total-input"><input id="manualTotal" inputmode="decimal" autocomplete="off" value="${entered.toFixed(2).replace('.',',')}" ${state.cart.length?'':'disabled'}><span>€</span></div><div id="discountInfo" class="discount-info ${discount>0?'active':''}">${discountText}</div>${discount>0?`<button id="resetDiscount" class="text-btn reset-discount" type="button">${loyalty.eligible?'Revenir à la remise fidélité':'Annuler la remise'}</button>`:''}</div>
@@ -286,7 +285,44 @@
     document.querySelectorAll('[data-minus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.minus,-1));
     document.querySelectorAll('[data-plus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.plus,1));
     document.querySelectorAll('[data-pay]').forEach(x=>x.onclick=()=>{ if(!selectedClient)return; state.payment=x.dataset.pay;renderSale(); });
-    document.getElementById('clientSelect').onchange=e=>{ state.selectedClientId=e.target.value||null; state.payment=null; state.manualTotal=null; state.saleSuccess=''; renderSale(); };
+    const clientSearchInput=document.getElementById('clientSearchSale');
+    const clientSearchResults=document.getElementById('clientSearchResults');
+    const normalizeText=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    const renderClientSearchResults=(query='',showAll=false)=>{
+      if(!clientSearchResults)return;
+      const q=normalizeText(query.trim());
+      let matches=state.clients.slice().sort((a,b)=>clientName(a).localeCompare(clientName(b),'fr',{sensitivity:'base'}));
+      if(q){
+        matches=matches.filter(c=>normalizeText([clientCode(c),clientName(c),c.first_name,c.last_name,c.email,c.phone].join(' ')).includes(q));
+      } else if(!showAll){
+        clientSearchResults.classList.remove('open');
+        clientSearchResults.innerHTML='';
+        return;
+      }
+      matches=matches.slice(0,10);
+      clientSearchResults.innerHTML=matches.length?matches.map(c=>`<button type="button" class="client-search-result" data-client-result="${c.id}"><strong>${esc(clientCode(c)+' - '+clientName(c))}</strong><span>${esc(c.email||'')}${c.phone?(c.email?' · ':'')+esc(c.phone):''}</span></button>`).join(''):`<div class="client-search-empty">Aucun client trouvé.</div>`;
+      clientSearchResults.classList.add('open');
+      clientSearchResults.querySelectorAll('[data-client-result]').forEach(btn=>btn.onclick=()=>{
+        state.selectedClientId=btn.dataset.clientResult;
+        state.payment=null;
+        state.manualTotal=null;
+        state.saleSuccess='';
+        renderSale();
+      });
+    };
+    if(clientSearchInput){
+      clientSearchInput.oninput=e=>renderClientSearchResults(e.target.value,true);
+      clientSearchInput.onfocus=e=>renderClientSearchResults(e.target.value,true);
+      clientSearchInput.onkeydown=e=>{ if(e.key==='Escape'){clientSearchResults.classList.remove('open'); clientSearchInput.blur();} };
+    }
+    document.addEventListener('click',function closeClientSearch(ev){
+      if(!clientSearchResults || !clientSearchResults.classList.contains('open'))return;
+      if(ev.target.closest('.client-search-sale'))return;
+      clientSearchResults.classList.remove('open');
+      document.removeEventListener('click',closeClientSearch);
+    });
+    const clearSelectedClient=document.getElementById('clearSelectedClient');
+    if(clearSelectedClient) clearSelectedClient.onclick=()=>{ state.selectedClientId=null; state.payment=null; state.manualTotal=null; state.saleSuccess=''; renderSale(); };
     document.getElementById('newClientFromSale').onclick=()=>openClientModal(null,{selectAfter:true});
     const totalInput=document.getElementById('manualTotal');
     totalInput.oninput=e=>{

@@ -1,9 +1,9 @@
-# Suivi Beauty PWA — v1.10
+# Suivi Beauty PWA — v1.11
 
 Version directe pour GitHub Pages : aucun npm, aucun build et aucune GitHub Action n’est nécessaire.
 
 
-## Nouveauté v1.10
+## Nouveauté v1.11
 
 - Dans l’**Historique**, chaque vente affiche maintenant automatiquement l’**heure à laquelle elle a été encodée** (HH:mm).
 - La date reste la date de vente sélectionnée dans **Nouvelle vente**.
@@ -41,3 +41,7 @@ GitHub Pages peut rester configuré sur :
 ## Nouvelle installation
 
 Le fichier `supabase/schema.sql` contient le schéma complet à jour. Le fichier `supabase/update_v1.8_clients.sql` reste fourni pour l’historique des migrations.
+
+
+## v1.11 - Recherche client
+Dans **Nouvelle vente**, tapez directement le prénom, le nom ou le numéro client (CL0001…) pour retrouver rapidement une fiche. Cliquez ensuite sur le résultat pour sélectionner le client. Aucune mise à jour SQL Supabase n’est nécessaire.
