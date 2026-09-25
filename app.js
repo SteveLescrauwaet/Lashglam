@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.7.0';
+  const VERSION = '1.8.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -29,7 +29,7 @@
 
   const state = {
     session:null, user:null, view:'sale', month:new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-    catalog:[], sales:[], cart:[], catalogTab:'prestation', payment:'espece', saleDate:toDateInput(new Date()), note:'', manualTotal:null, saleSuccess:'', busy:false
+    catalog:[], clients:[], sales:[], cart:[], catalogTab:'prestation', selectedClientId:null, payment:null, saleDate:toDateInput(new Date()), note:'', manualTotal:null, saleSuccess:'', clientError:null, busy:false
   };
 
   const app = document.getElementById('app');
@@ -63,6 +63,26 @@
   function saleDiscount(s){ return Math.max(0,round2(rawSaleTotal(s)-saleTotal(s))); }
   function parseMoney(v){ const n=Number(String(v??'').replace(/\s/g,'').replace(',','.')); return Number.isFinite(n)?round2(n):null; }
   function monthSales(){ return state.sales.filter(s=>sameMonth(s.sale_date)); }
+  function clientCode(c){ return c ? `CL${String(Number(c.client_number)||0).padStart(4,'0')}` : ''; }
+  function clientName(c){ return c ? `${String(c.first_name||'').trim()} ${String(c.last_name||'').trim()}`.trim() : ''; }
+  function clientForSale(s){ return state.clients.find(c=>c.id===s.client_id) || null; }
+  function clientAppointmentCount(clientId){
+    if(!clientId) return 0;
+    return state.sales.filter(s=>s.client_id===clientId && (s.sale_lines||[]).some(l=>l.type_snapshot==='prestation')).length;
+  }
+  function loyaltyInfo(clientId){
+    const completed=clientAppointmentCount(clientId);
+    const hasPrestation=state.cart.some(l=>l.item.type==='prestation');
+    const currentAppointment=completed+(hasPrestation?1:0);
+    const eligible=completed>=5 || (hasPrestation && currentAppointment>=5);
+    return {completed,hasPrestation,currentAppointment,eligible};
+  }
+  function clientSaleLabel(s){
+    const c=clientForSale(s);
+    if(c) return `${clientCode(c)} - ${clientName(c)}`;
+    const legacy=saleDisplayNote(s);
+    return legacy || 'Ancienne vente (sans client)';
+  }
   function saleBreakdown(s){
     let rawPrest=0, rawProd=0;
     (s.sale_lines||[]).forEach(l=>{
@@ -86,58 +106,49 @@
     const niceMonth=new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(state.month);
 
     const summary=[
-      ['CHIFFRE D’AFFAIRES MENSUEL'],
-      ['Mois', niceMonth],
-      [],
-      ['Indicateur','Montant / valeur'],
-      ['Chiffre d’affaires',ca],
-      ['Prestations',prest],
-      ['Produits',prod],
-      ['Remises accordées',discounts],
-      ['Nombre de ventes',sales.length],
-      ['Panier moyen',sales.length?round2(ca/sales.length):0],
-      [],
+      ['CHIFFRE D’AFFAIRES MENSUEL'],['Mois',niceMonth],[],['Indicateur','Montant / valeur'],
+      ['Chiffre d’affaires',ca],['Prestations',prest],['Produits',prod],['Remises accordées',discounts],
+      ['Nombre de ventes',sales.length],['Panier moyen',sales.length?round2(ca/sales.length):0],[],
       ['Moyen de paiement','Montant','Part du CA'],
       ...PAYMENTS.map(p=>[p.label,round2(payTotals[p.id]||0),ca?round2((payTotals[p.id]||0)/ca*100)/100:0])
     ];
     const wsSummary=XLSX.utils.aoa_to_sheet(summary);
     wsSummary['!cols']=[{wch:28},{wch:20},{wch:14}];
     wsSummary['!merges']=[XLSX.utils.decode_range('A1:C1')];
-    // Formats numériques : € et %.
     ['B5','B6','B7','B8','B10','B13','B14','B15'].forEach(a=>{if(wsSummary[a]) wsSummary[a].z='#,##0.00 [$€-fr-BE]';});
     ['C13','C14','C15'].forEach(a=>{if(wsSummary[a]) wsSummary[a].z='0.0%';});
 
-    const saleRows=[['Date','Heure','Cliente / remarque','Mode de paiement','Sous-total (€)','Remise (€)','Total payé (€)','Prestations encaissées (€)','Produits encaissés (€)','Nombre de lignes']];
+    const saleRows=[['Date','Heure','N° client','Client','E-mail','Téléphone','Remarque','Mode de paiement','Sous-total (€)','Remise (€)','Total payé (€)','Prestations encaissées (€)','Produits encaissés (€)','Nombre de lignes']];
     sales.forEach(s=>{
-      const d=new Date(s.sale_date), b=saleBreakdown(s);
+      const d=new Date(s.sale_date), b=saleBreakdown(s), c=clientForSale(s);
       saleRows.push([
-        new Date(d.getFullYear(),d.getMonth(),d.getDate()),
-        `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
-        saleDisplayNote(s),payInfo(s.payment_method).label,b.raw,b.discount,b.paid,b.prest,b.prod,(s.sale_lines||[]).length
+        new Date(d.getFullYear(),d.getMonth(),d.getDate()),`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+        c?clientCode(c):'',c?clientName(c):'',c?.email||'',c?.phone||'',saleDisplayNote(s),payInfo(s.payment_method).label,
+        b.raw,b.discount,b.paid,b.prest,b.prod,(s.sale_lines||[]).length
       ]);
     });
     const wsSales=XLSX.utils.aoa_to_sheet(saleRows);
-    wsSales['!cols']=[{wch:12},{wch:8},{wch:34},{wch:18},{wch:16},{wch:14},{wch:16},{wch:24},{wch:21},{wch:16}];
-    wsSales['!autofilter']={ref:`A1:J${Math.max(1,saleRows.length)}`};
+    wsSales['!cols']=[{wch:12},{wch:8},{wch:11},{wch:28},{wch:30},{wch:18},{wch:30},{wch:18},{wch:16},{wch:14},{wch:16},{wch:24},{wch:21},{wch:16}];
+    wsSales['!autofilter']={ref:`A1:N${Math.max(1,saleRows.length)}`};
     for(let r=2;r<=saleRows.length;r++){
       if(wsSales[`A${r}`]) wsSales[`A${r}`].z='dd/mm/yyyy';
-      ['E','F','G','H','I'].forEach(c=>{if(wsSales[`${c}${r}`]) wsSales[`${c}${r}`].z='#,##0.00 [$€-fr-BE]';});
+      ['I','J','K','L','M'].forEach(c=>{if(wsSales[`${c}${r}`]) wsSales[`${c}${r}`].z='#,##0.00 [$€-fr-BE]';});
     }
 
-    const detailRows=[['Date','Heure','Type','Désignation','Quantité','Prix unitaire (€)','Montant brut (€)','Remise répartie (€)','Montant encaissé (€)','Mode de paiement','Cliente / remarque']];
+    const detailRows=[['Date','Heure','N° client','Client','Type','Désignation','Quantité','Prix unitaire (€)','Montant brut (€)','Remise répartie (€)','Montant encaissé (€)','Mode de paiement','Remarque']];
     sales.forEach(s=>{
-      const d=new Date(s.sale_date), b=saleBreakdown(s), note=saleDisplayNote(s), pay=payInfo(s.payment_method).label;
+      const d=new Date(s.sale_date), b=saleBreakdown(s), note=saleDisplayNote(s), pay=payInfo(s.payment_method).label, c=clientForSale(s);
       (s.sale_lines||[]).forEach(l=>{
         const gross=round2(Number(l.unit_price)*Number(l.quantity)), net=round2(gross*b.ratio), lineDiscount=Math.max(0,round2(gross-net));
-        detailRows.push([new Date(d.getFullYear(),d.getMonth(),d.getDate()),`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,l.type_snapshot==='produit'?'Produit':'Prestation',l.name_snapshot,Number(l.quantity),Number(l.unit_price),gross,lineDiscount,net,pay,note]);
+        detailRows.push([new Date(d.getFullYear(),d.getMonth(),d.getDate()),`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,c?clientCode(c):'',c?clientName(c):'',l.type_snapshot==='produit'?'Produit':'Prestation',l.name_snapshot,Number(l.quantity),Number(l.unit_price),gross,lineDiscount,net,pay,note]);
       });
     });
     const wsDetail=XLSX.utils.aoa_to_sheet(detailRows);
-    wsDetail['!cols']=[{wch:12},{wch:8},{wch:13},{wch:38},{wch:10},{wch:17},{wch:17},{wch:19},{wch:20},{wch:18},{wch:34}];
-    wsDetail['!autofilter']={ref:`A1:K${Math.max(1,detailRows.length)}`};
+    wsDetail['!cols']=[{wch:12},{wch:8},{wch:11},{wch:28},{wch:13},{wch:38},{wch:10},{wch:17},{wch:17},{wch:19},{wch:20},{wch:18},{wch:30}];
+    wsDetail['!autofilter']={ref:`A1:M${Math.max(1,detailRows.length)}`};
     for(let r=2;r<=detailRows.length;r++){
       if(wsDetail[`A${r}`]) wsDetail[`A${r}`].z='dd/mm/yyyy';
-      ['F','G','H','I'].forEach(c=>{if(wsDetail[`${c}${r}`]) wsDetail[`${c}${r}`].z='#,##0.00 [$€-fr-BE]';});
+      ['H','I','J','K'].forEach(c=>{if(wsDetail[`${c}${r}`]) wsDetail[`${c}${r}`].z='#,##0.00 [$€-fr-BE]';});
     }
 
     const wb=XLSX.utils.book_new();
@@ -161,11 +172,13 @@
   async function loadAll(){
     state.busy=true; render();
     await seedDefaults();
-    const [catRes,salesRes] = await Promise.all([
+    const [catRes,clientsRes,salesRes] = await Promise.all([
       sb.from('catalog_items').select('*').order('type').order('sort_order'),
+      sb.from('clients').select('*').order('client_number'),
       sb.from('sales').select('*, sale_lines(*)').order('sale_date',{ascending:false})
     ]);
     if(catRes.error) notify('Catalogue : '+catRes.error.message,'error'); else state.catalog=catRes.data||[];
+    if(clientsRes.error){ state.clientError=clientsRes.error.message; state.clients=[]; notify('Clients : '+clientsRes.error.message,'error'); } else { state.clientError=null; state.clients=clientsRes.data||[]; }
     if(salesRes.error) notify('Historique : '+salesRes.error.message,'error'); else state.sales=salesRes.data||[];
     state.busy=false;
   }
@@ -207,12 +220,12 @@
 
   function shellHTML(){
     return `<div class="shell"><header class="topbar"><div class="brand-mark">CA</div><div class="topbar-title"><strong>Suivi Beauty</strong><small>${esc(state.user.email)}</small></div>
-      <nav class="nav">${[['sale','Nouvelle vente'],['dashboard','Tableau de bord'],['catalog','Catalogue'],['history','Historique']].map(([id,l])=>`<button data-view="${id}" class="${state.view===id?'active':''}">${l}</button>`).join('')}</nav>
+      <nav class="nav">${[['sale','Nouvelle vente'],['dashboard','Tableau de bord'],['catalog','Catalogue'],['clients','Clients'],['history','Historique']].map(([id,l])=>`<button data-view="${id}" class="${state.view===id?'active':''}">${l}</button>`).join('')}</nav>
       <div class="top-actions"><span class="connection-dot">Supabase</span><button id="logout" class="secondary">Déconnexion</button></div></header>
       <main id="view" class="page"></main><div class="footer">PWA directe GitHub Pages · v${VERSION}</div></div>`;
   }
   function bindShell(){ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();}); document.getElementById('logout').onclick=()=>sb.auth.signOut(); }
-  function renderView(){ if(state.view==='dashboard') renderDashboard(); else if(state.view==='sale') renderSale(); else if(state.view==='history') renderHistory(); else renderCatalogAdmin(); }
+  function renderView(){ if(state.view==='dashboard') renderDashboard(); else if(state.view==='sale') renderSale(); else if(state.view==='history') renderHistory(); else if(state.view==='clients') renderClients(); else renderCatalogAdmin(); }
   function monthNavHTML(){ return `<div class="month-nav"><button id="prevMonth" class="secondary">‹</button><div class="month-label">${esc(monthLabel())}</div><button id="nextMonth" class="secondary">›</button></div>`; }
   function bindMonthNav(){ document.getElementById('prevMonth').onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()-1,1);renderView();}; document.getElementById('nextMonth').onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()+1,1);renderView();}; }
 
@@ -230,54 +243,89 @@
 
   function renderSale(){
     const items=state.catalog.filter(x=>x.type===state.catalogTab).sort((a,b)=>a.sort_order-b.sort_order);
+    const selectedClient=state.clients.find(c=>c.id===state.selectedClientId)||null;
+    const loyalty=selectedClient?loyaltyInfo(selectedClient.id):{completed:0,hasPrestation:false,currentAppointment:0,eligible:false};
     const baseTotal=round2(state.cart.reduce((a,l)=>a+Number(l.item.price)*l.qty,0));
-    const entered=state.manualTotal===null?baseTotal:Math.min(baseTotal,Math.max(0,round2(state.manualTotal)));
+    const loyaltyTotal=loyalty.eligible?round2(baseTotal*0.90):baseTotal;
+    const entered=state.manualTotal===null?loyaltyTotal:Math.min(loyaltyTotal,Math.max(0,round2(state.manualTotal)));
     const discount=Math.max(0,round2(baseTotal-entered));
     const discountPct=baseTotal?Math.round(discount/baseTotal*100):0;
-    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Nouvelle vente</h1><p>Sélectionne les prestations ou produits à encaisser.</p></div></div>${state.saleSuccess?`<div class="alert success sale-success">✓ ${esc(state.saleSuccess)}</div>`:''}
+    const canChoosePayment=!!selectedClient;
+    const canSave=state.cart.length>0 && !!selectedClient && !!state.payment;
+    const clientOptions=state.clients.map(c=>`<option value="${c.id}" ${c.id===state.selectedClientId?'selected':''}>${esc(clientCode(c)+' - '+clientName(c))}</option>`).join('');
+    const loyaltyText=selectedClient ? (loyalty.completed>=5
+      ? `<div class="loyalty-banner active">★ Fidélité active : 10 % de remise automatique · ${loyalty.completed} RDV réalisés</div>`
+      : loyalty.eligible
+        ? `<div class="loyalty-banner active">★ ${loyalty.currentAppointment}e RDV : 10 % de remise appliquée automatiquement</div>`
+        : `<div class="loyalty-banner">${loyalty.completed} RDV réalisé${loyalty.completed>1?'s':''} · ${5-loyalty.completed} avant la remise fidélité de 10 %</div>`)
+      : '';
+    const discountText=discount>0
+      ? `${loyalty.eligible?'Remise fidélité incluse · ':''}Remise totale : −${euro(discount)} (${discountPct} %)`
+      : 'Aucune remise';
+
+    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Nouvelle vente</h1><p>Sélectionne d’abord le client, puis les prestations et le moyen de paiement.</p></div></div>${state.saleSuccess?`<div class="alert success sale-success">✓ ${esc(state.saleSuccess)}</div>`:''}${state.clientError?`<div class="alert error">Le fichier clients n’est pas encore configuré dans Supabase. Exécute le fichier <strong>supabase/update_v1.8_clients.sql</strong>.</div>`:''}
       <div class="checkout"><section><div class="catalog-tabs"><button id="tabPrest" class="${state.catalogTab==='prestation'?'primary':'secondary'}">Prestations</button><button id="tabProd" class="${state.catalogTab==='produit'?'primary':'secondary'}">Produits</button></div>
       <div class="catalog-grid">${items.length?items.map(item=>catalogCard(item)).join(''):'<div class="empty">Aucun élément dans cette catégorie.</div>'}</div></section>
-      <aside class="cart"><h2>Panier</h2><div class="cart-lines">${state.cart.length?state.cart.map((l,i)=>`<div class="cart-line"><div class="cart-line-head"><strong>${esc(l.item.name)}</strong><b>${euro(l.item.price*l.qty)}</b></div><div class="qty"><button data-minus="${i}">−</button><strong>${l.qty}</strong><button data-plus="${i}">+</button><span>${euro(l.item.price)} / unité</span></div></div>`).join(''):'<div class="empty">Le panier est vide.</div>'}</div>
+      <aside class="cart"><h2>Panier</h2>
+      <div class="checkout-step"><div class="step-title"><span>1</span><strong>Client</strong></div><div class="client-select-row"><select id="clientSelect" ${state.clientError?'disabled':''}><option value="">Sélectionner un client…</option>${clientOptions}</select><button id="newClientFromSale" class="secondary" type="button" ${state.clientError?'disabled':''}>+ Nouveau</button></div>${selectedClient?`<div class="selected-client"><strong>${esc(clientCode(selectedClient)+' - '+clientName(selectedClient))}</strong><span>${esc(selectedClient.email||'Pas d’e-mail')}${selectedClient.phone?' · '+esc(selectedClient.phone):''}</span></div>${loyaltyText}`:'<div class="locked-hint">Le client doit être sélectionné ou créé avant le paiement.</div>'}</div>
+      <div class="cart-lines">${state.cart.length?state.cart.map((l,i)=>`<div class="cart-line"><div class="cart-line-head"><strong>${esc(l.item.name)}</strong><b>${euro(l.item.price*l.qty)}</b></div><div class="qty"><button data-minus="${i}">−</button><strong>${l.qty}</strong><button data-plus="${i}">+</button><span>${euro(l.item.price)} / unité</span></div></div>`).join(''):'<div class="empty">Le panier est vide.</div>'}</div>
       <div class="cart-subtotal"><span>Sous-total</span><strong>${euro(baseTotal)}</strong></div>
-      <div class="manual-total-block"><label for="manualTotal">Total à payer <small>(modifiable pour appliquer une remise)</small></label><div class="manual-total-input"><input id="manualTotal" inputmode="decimal" autocomplete="off" value="${entered.toFixed(2).replace('.',',')}" ${state.cart.length?'':'disabled'}><span>€</span></div><div id="discountInfo" class="discount-info ${discount>0?'active':''}">${discount>0?`Remise : −${euro(discount)} (${discountPct} %)`:'Aucune remise'}</div>${discount>0?'<button id="resetDiscount" class="text-btn reset-discount" type="button">Annuler la remise</button>':''}</div>
-      <label style="margin-top:12px">Date<input id="saleDate" type="date" value="${state.saleDate}"></label><span style="display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:700">Mode de paiement</span><div class="pay-grid">${PAYMENTS.map(p=>`<button class="pay-btn ${state.payment===p.id?'active':''}" data-pay="${p.id}">${p.icon} ${p.label}</button>`).join('')}</div><label>Cliente / remarque<textarea id="saleNote" placeholder="Facultatif">${esc(state.note)}</textarea></label><button id="saveSale" class="primary full" style="margin-top:12px" ${state.cart.length?'':'disabled'}>Enregistrer la vente</button></aside></div>`;
-    document.getElementById('tabPrest').onclick=()=>{state.catalogTab='prestation';renderSale();}; document.getElementById('tabProd').onclick=()=>{state.catalogTab='produit';renderSale();};
-    document.querySelectorAll('[data-add]').forEach(x=>x.onclick=()=>addCart(x.dataset.add)); document.querySelectorAll('[data-minus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.minus,-1)); document.querySelectorAll('[data-plus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.plus,1)); document.querySelectorAll('[data-pay]').forEach(x=>x.onclick=()=>{state.payment=x.dataset.pay;renderSale();});
+      <div class="manual-total-block"><label for="manualTotal">Total à payer <small>${loyalty.eligible?'La remise fidélité de 10 % est automatique. Tu peux encore diminuer le total.':'Modifiable pour appliquer une remise.'}</small></label><div class="manual-total-input"><input id="manualTotal" inputmode="decimal" autocomplete="off" value="${entered.toFixed(2).replace('.',',')}" ${state.cart.length?'':'disabled'}><span>€</span></div><div id="discountInfo" class="discount-info ${discount>0?'active':''}">${discountText}</div>${discount>0?`<button id="resetDiscount" class="text-btn reset-discount" type="button">${loyalty.eligible?'Revenir à la remise fidélité':'Annuler la remise'}</button>`:''}</div>
+      <label style="margin-top:12px">Date<input id="saleDate" type="date" value="${state.saleDate}"></label>
+      <div class="checkout-step payment-step ${canChoosePayment?'':'locked'}"><div class="step-title"><span>2</span><strong>Mode de paiement</strong></div>${canChoosePayment?'':'<div class="locked-hint">Sélectionne d’abord le client.</div>'}<div class="pay-grid">${PAYMENTS.map(p=>`<button class="pay-btn ${state.payment===p.id?'active':''}" data-pay="${p.id}" ${canChoosePayment?'':'disabled'}>${p.icon} ${p.label}</button>`).join('')}</div></div>
+      <label>Remarque<textarea id="saleNote" placeholder="Facultatif">${esc(state.note)}</textarea></label><button id="saveSale" class="primary full" style="margin-top:12px" ${canSave?'':'disabled'}>Enregistrer la vente</button></aside></div>`;
+
+    document.getElementById('tabPrest').onclick=()=>{state.catalogTab='prestation';renderSale();};
+    document.getElementById('tabProd').onclick=()=>{state.catalogTab='produit';renderSale();};
+    document.querySelectorAll('[data-add]').forEach(x=>x.onclick=()=>addCart(x.dataset.add));
+    document.querySelectorAll('[data-minus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.minus,-1));
+    document.querySelectorAll('[data-plus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.plus,1));
+    document.querySelectorAll('[data-pay]').forEach(x=>x.onclick=()=>{ if(!selectedClient)return; state.payment=x.dataset.pay;renderSale(); });
+    document.getElementById('clientSelect').onchange=e=>{ state.selectedClientId=e.target.value||null; state.payment=null; state.manualTotal=null; state.saleSuccess=''; renderSale(); };
+    document.getElementById('newClientFromSale').onclick=()=>openClientModal(null,{selectAfter:true});
     const totalInput=document.getElementById('manualTotal');
     totalInput.oninput=e=>{
-      const value=parseMoney(e.target.value);
-      if(value===null) return;
-      state.manualTotal=Math.min(baseTotal,Math.max(0,value));
+      const value=parseMoney(e.target.value); if(value===null)return;
+      state.manualTotal=Math.min(loyaltyTotal,Math.max(0,value));
       const d=Math.max(0,round2(baseTotal-state.manualTotal)), pct=baseTotal?Math.round(d/baseTotal*100):0;
-      const info=document.getElementById('discountInfo'); if(info){ info.classList.toggle('active',d>0); info.textContent=d>0?`Remise : −${euro(d)} (${pct} %)`:'Aucune remise'; }
+      const info=document.getElementById('discountInfo'); if(info){ info.classList.toggle('active',d>0); info.textContent=d>0?`${loyalty.eligible?'Remise fidélité incluse · ':''}Remise totale : −${euro(d)} (${pct} %)`:'Aucune remise'; }
     };
-    totalInput.onblur=e=>{ const value=parseMoney(e.target.value); state.manualTotal=value===null?null:Math.min(baseTotal,Math.max(0,value)); renderSale(); };
+    totalInput.onblur=e=>{ const value=parseMoney(e.target.value); state.manualTotal=value===null?null:Math.min(loyaltyTotal,Math.max(0,value)); renderSale(); };
     const reset=document.getElementById('resetDiscount'); if(reset) reset.onclick=()=>{state.manualTotal=null;renderSale();};
-    document.getElementById('saleDate').onchange=e=>state.saleDate=e.target.value; document.getElementById('saleNote').oninput=e=>state.note=e.target.value; document.getElementById('saveSale').onclick=saveSale;
+    document.getElementById('saleDate').onchange=e=>state.saleDate=e.target.value;
+    document.getElementById('saleNote').oninput=e=>state.note=e.target.value;
+    document.getElementById('saveSale').onclick=saveSale;
   }
   function catalogCard(item){ const img=item.image_url?`<img src="${esc(item.image_url)}" alt="" onerror="this.outerHTML='<div class=&quot;img-fallback&quot;>Image</div>'">`:'<div class="img-fallback">Image</div>'; return `<article class="catalog-card ${item.is_solo?'solo':''}" data-add="${item.id}">${img}<div class="card-body"><strong>${esc(item.name)}</strong><small>${item.type==='prestation'&&item.duration_minutes?durationLabel(item.duration_minutes):item.type==='produit'?'Produit':''}</small><b>${euro(item.price)}</b><div class="add-hint">+ Ajouter</div></div></article>`; }
   function durationLabel(m){ const h=Math.floor(m/60),min=m%60; return h&&min?`${h}h${String(min).padStart(2,'0')}`:h?`${h}h`:`${min} min`; }
   function addCart(id){ state.saleSuccess=''; state.manualTotal=null; const item=state.catalog.find(x=>x.id===id); if(!item)return; const l=state.cart.find(x=>x.item.id===id); if(l)l.qty++; else state.cart.push({item,qty:1}); renderSale(); }
   function changeQty(i,d){ state.manualTotal=null; state.cart[i].qty+=d; if(state.cart[i].qty<=0)state.cart.splice(i,1); renderSale(); }
   async function saveSale(){
-    if(!state.cart.length)return;
+    if(!state.cart.length) return;
+    const client=state.clients.find(c=>c.id===state.selectedClientId);
+    if(!client){ notify('Sélectionne ou crée le client avant de valider la vente.','error'); return; }
+    if(!state.payment){ notify('Sélectionne le moyen de paiement.','error'); return; }
     const baseTotal=round2(state.cart.reduce((a,l)=>a+Number(l.item.price)*l.qty,0));
-    const finalTotal=state.manualTotal===null?baseTotal:Math.min(baseTotal,Math.max(0,round2(state.manualTotal)));
+    const loyalty=loyaltyInfo(client.id), loyaltyTotal=loyalty.eligible?round2(baseTotal*0.90):baseTotal;
+    const finalTotal=state.manualTotal===null?loyaltyTotal:Math.min(loyaltyTotal,Math.max(0,round2(state.manualTotal)));
     const btn=document.getElementById('saveSale'); btn.disabled=true; btn.textContent='Enregistrement…';
     const dt=new Date(`${state.saleDate}T12:00:00`);
     const storedNote=buildSaleNote(state.note,baseTotal,finalTotal);
-    const {data:sale,error}=await sb.from('sales').insert({user_id:state.user.id,sale_date:dt.toISOString(),payment_method:state.payment,note:storedNote}).select().single();
+    const {data:sale,error}=await sb.from('sales').insert({user_id:state.user.id,client_id:client.id,sale_date:dt.toISOString(),payment_method:state.payment,note:storedNote}).select().single();
     if(error){notify(error.message,'error');renderSale();return;}
     const lines=state.cart.map(l=>({user_id:state.user.id,sale_id:sale.id,catalog_item_id:l.item.id,name_snapshot:l.item.name,type_snapshot:l.item.type,unit_price:l.item.price,quantity:l.qty}));
     const {error:lineErr}=await sb.from('sale_lines').insert(lines);
     if(lineErr){await sb.from('sales').delete().eq('id',sale.id);notify(lineErr.message,'error');renderSale();return;}
-    state.cart=[]; state.note=''; state.manualTotal=null; state.saleDate=toDateInput(new Date()); state.saleSuccess='Vente validée';
-    await loadAll(); state.view='sale'; render(); notify(finalTotal<baseTotal?`Vente validée avec une remise de ${euro(baseTotal-finalTotal)}.`:'Vente validée.');
+    const loyaltyApplied=loyalty.eligible;
+    state.cart=[]; state.note=''; state.manualTotal=null; state.saleDate=toDateInput(new Date()); state.selectedClientId=null; state.payment=null;
+    state.saleSuccess=`Vente validée pour ${clientCode(client)} - ${clientName(client)}${loyaltyApplied?' · remise fidélité 10 %':''}`;
+    await loadAll(); state.view='sale'; render();
+    notify(loyaltyApplied?`Vente validée · remise fidélité 10 % appliquée.`:finalTotal<baseTotal?`Vente validée avec une remise de ${euro(baseTotal-finalTotal)}.`:'Vente validée.');
   }
 
   function renderHistory(){
     const sales=monthSales(), total=sales.reduce((a,s)=>a+saleTotal(s),0);
-    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Historique</h1><p>Ventes regroupées par mode de paiement. Tu peux supprimer une ligne ou une vente complète.</p></div>${monthNavHTML()}</div><div class="history-total">${sales.length} vente${sales.length>1?'s':''} · ${euro(total)}</div><div class="history-groups">${PAYMENTS.map(p=>historyGroup(p,sales.filter(s=>s.payment_method===p.id))).join('')}</div>`;
+    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Historique</h1><p>Ventes regroupées par mode de paiement. Les ventes de septembre déjà existantes restent sans fiche client.</p></div>${monthNavHTML()}</div><div class="history-total">${sales.length} vente${sales.length>1?'s':''} · ${euro(total)}</div><div class="history-groups">${PAYMENTS.map(p=>historyGroup(p,sales.filter(s=>s.payment_method===p.id))).join('')}</div>`;
     bindMonthNav();
     document.querySelectorAll('[data-delete-sale]').forEach(b=>b.onclick=()=>deleteHistorySale(b.dataset.deleteSale));
     document.querySelectorAll('[data-delete-line]').forEach(b=>b.onclick=()=>deleteHistoryLine(b.dataset.deleteLine,b.dataset.saleId));
@@ -285,8 +333,9 @@
   function historyGroup(p,sales){
     const total=sales.reduce((a,s)=>a+saleTotal(s),0);
     return `<details class="pay-group" open><summary><div class="pay-icon">${p.icon}</div><div class="pay-title"><strong>${p.label}</strong><span>${sales.length} vente${sales.length>1?'s':''}</span></div><b>${euro(total)}</b></summary><div class="pay-body">${sales.length?sales.map(s=>{
-      const raw=rawSaleTotal(s), paid=saleTotal(s), discount=saleDiscount(s), note=saleDisplayNote(s);
-      return `<details class="sale-card"><summary><div><strong>${esc(note||'Vente')}</strong><span>${dateLabel(s.sale_date)}</span></div><b>${euro(paid)}</b></summary><div class="sale-details">${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div class="sale-line-main"><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)} · ${l.type_snapshot==='produit'?'Produit':'Prestation'}</small></div><div class="sale-line-actions"><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b><button class="history-delete-line" type="button" data-delete-line="${l.id}" data-sale-id="${s.id}" title="Supprimer cette ligne">×</button></div></div>`).join('')}${discount>0?`<div class="history-discount"><div><span>Sous-total</span><b>${euro(raw)}</b></div><div><span>Remise appliquée</span><b>−${euro(discount)}</b></div><div class="history-paid"><span>Total payé</span><b>${euro(paid)}</b></div></div>`:''}<div class="sale-footer"><button class="danger-btn compact" type="button" data-delete-sale="${s.id}">Supprimer la vente complète</button></div></div></details>`;
+      const raw=rawSaleTotal(s), paid=saleTotal(s), discount=saleDiscount(s), note=saleDisplayNote(s), c=clientForSale(s);
+      const title=c?`${clientCode(c)} - ${clientName(c)}`:(note||'Ancienne vente (sans client)');
+      return `<details class="sale-card"><summary><div><strong>${esc(title)}</strong><span>${dateLabel(s.sale_date)}</span></div><b>${euro(paid)}</b></summary><div class="sale-details">${c?`<div class="history-client"><strong>${esc(clientCode(c)+' - '+clientName(c))}</strong><span>${esc(c.email||'')}${c.phone?' · '+esc(c.phone):''}</span></div>`:''}${note&&c?`<div class="history-note">Remarque : ${esc(note)}</div>`:''}${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div class="sale-line-main"><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)} · ${l.type_snapshot==='produit'?'Produit':'Prestation'}</small></div><div class="sale-line-actions"><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b><button class="history-delete-line" type="button" data-delete-line="${l.id}" data-sale-id="${s.id}" title="Supprimer cette ligne">×</button></div></div>`).join('')}${discount>0?`<div class="history-discount"><div><span>Sous-total</span><b>${euro(raw)}</b></div><div><span>Remise appliquée</span><b>−${euro(discount)}</b></div><div class="history-paid"><span>Total payé</span><b>${euro(paid)}</b></div></div>`:''}<div class="sale-footer"><button class="danger-btn compact" type="button" data-delete-sale="${s.id}">Supprimer la vente complète</button></div></div></details>`;
     }).join(''):'<div class="empty">Aucune vente.</div>'}</div></details>`;
   }
   async function deleteHistorySale(id){
@@ -318,6 +367,36 @@
     const {error:noteErr}=await sb.from('sales').update({note:newNote}).eq('id',saleId).eq('user_id',state.user.id);
     if(noteErr) notify('Ligne supprimée, mais la remise n’a pas pu être recalculée : '+noteErr.message,'error');
     await loadAll(); renderHistory(); notify('Ligne supprimée de la vente.');
+  }
+
+  function renderClients(){
+    const clients=state.clients.slice().sort((a,b)=>Number(a.client_number)-Number(b.client_number));
+    document.getElementById('view').innerHTML=`<div class="admin-head"><div><h1 style="margin:0 0 5px">Fichier clients</h1><p class="muted" style="margin:0">Les anciens passages de septembre ne sont pas transformés en clients. Le compteur commence avec les nouvelles ventes liées à une fiche client.</p></div><button id="addClient" class="primary" ${state.clientError?'disabled':''}>+ Nouveau client</button></div>${state.clientError?`<div class="alert error">Le fichier clients n’est pas encore disponible : ${esc(state.clientError)}. Exécute <strong>supabase/update_v1.8_clients.sql</strong>.</div>`:`<div class="client-search"><input id="clientSearch" type="search" placeholder="Rechercher par nom, n° client, e-mail ou téléphone…"></div><div class="client-list">${clients.length?clients.map(c=>clientCard(c)).join(''):'<div class="empty">Aucun client. Le premier créé recevra le numéro CL0001.</div>'}</div>`}`;
+    const add=document.getElementById('addClient'); if(add) add.onclick=()=>openClientModal();
+    document.querySelectorAll('[data-edit-client]').forEach(b=>b.onclick=()=>openClientModal(state.clients.find(c=>c.id===b.dataset.editClient)));
+    const search=document.getElementById('clientSearch');
+    if(search) search.oninput=e=>{ const q=e.target.value.trim().toLowerCase(); document.querySelectorAll('.client-card').forEach(card=>{card.hidden=q&&!card.dataset.search.includes(q);}); };
+  }
+  function clientCard(c){
+    const n=clientAppointmentCount(c.id), active=n>=5;
+    const search=[clientCode(c),clientName(c),c.email||'',c.phone||''].join(' ').toLowerCase();
+    return `<article class="client-card" data-search="${esc(search)}"><div class="client-number">${esc(clientCode(c))}</div><div class="client-card-main"><strong>${esc(clientName(c))}</strong><span>${esc(c.email||'Pas d’e-mail')}${c.phone?' · '+esc(c.phone):' · Pas de téléphone'}</span></div><div class="client-rdv ${active?'active':''}"><strong>${n} RDV</strong><span>${active?'−10 % actif':`${Math.max(0,5-n)} avant −10 %`}</span></div><button class="icon-btn" type="button" data-edit-client="${c.id}" title="Modifier">✎</button></article>`;
+  }
+  function openClientModal(client=null,{selectAfter=false}={}){
+    const wrap=document.createElement('div'); wrap.className='modal-backdrop';
+    wrap.innerHTML=`<form class="modal client-modal" id="clientForm"><div class="modal-head"><div><h2>${client?'Modifier le client':'Nouveau client'}</h2>${client?`<p class="client-modal-code">${esc(clientCode(client))}</p>`:'<p class="client-modal-code">Le numéro sera attribué automatiquement.</p>'}</div><button type="button" id="closeClientModal" class="secondary">×</button></div><div class="form-grid"><label>Prénom<input id="cFirstName" required autocomplete="given-name" value="${esc(client?.first_name||'')}"></label><label>Nom<input id="cLastName" required autocomplete="family-name" value="${esc(client?.last_name||'')}"></label><label>E-mail<input id="cEmail" type="email" autocomplete="email" value="${esc(client?.email||'')}"></label><label>Téléphone<input id="cPhone" type="tel" autocomplete="tel" value="${esc(client?.phone||'')}"></label></div><div id="clientFormMsg"></div><div class="modal-actions"><button type="button" id="cancelClientModal" class="secondary">Annuler</button><button class="primary" type="submit">${client?'Enregistrer':'Créer le client'}</button></div></form>`;
+    document.body.appendChild(wrap);
+    const close=()=>wrap.remove(); document.getElementById('closeClientModal').onclick=close; document.getElementById('cancelClientModal').onclick=close; wrap.onclick=e=>{if(e.target===wrap)close();};
+    document.getElementById('clientForm').onsubmit=async e=>{
+      e.preventDefault(); const btn=e.submitter; btn.disabled=true; btn.textContent='Enregistrement…';
+      const row={user_id:state.user.id,first_name:document.getElementById('cFirstName').value.trim(),last_name:document.getElementById('cLastName').value.trim(),email:document.getElementById('cEmail').value.trim()||null,phone:document.getElementById('cPhone').value.trim()||null};
+      const q=client?sb.from('clients').update(row).eq('id',client.id).eq('user_id',state.user.id):sb.from('clients').insert(row);
+      const {data,error}=await q.select().single();
+      if(error){document.getElementById('clientFormMsg').innerHTML=`<div class="alert error">${esc(error.message)}</div>`;btn.disabled=false;btn.textContent=client?'Enregistrer':'Créer le client';return;}
+      close(); await loadAll();
+      if(selectAfter){ state.selectedClientId=data.id; state.payment=null; state.manualTotal=null; state.view='sale'; render(); notify(`${clientCode(data)} - ${clientName(data)} créé et sélectionné.`); }
+      else { state.view='clients'; render(); notify(client?'Fiche client modifiée.':`${clientCode(data)} - ${clientName(data)} créé.`); }
+    };
   }
 
   function renderCatalogAdmin(){
