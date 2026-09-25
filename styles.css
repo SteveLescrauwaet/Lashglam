@@ -28,3 +28,23 @@ label{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:13
 .footer{padding:15px;text-align:center;color:#6f6266;font-size:11px}
 @media(max-width:900px){.metric-grid{grid-template-columns:1fr 1fr}.metric-grid .metric:last-child{grid-column:1/-1}.checkout{grid-template-columns:1fr}.cart{position:static;max-height:none}.topbar{flex-wrap:wrap}.nav{order:3;width:100%}}
 @media(max-width:620px){.page{padding:14px 11px 40px}.topbar{padding:10px 11px}.topbar-title{min-width:0;flex:1}.connection-dot{display:none}.nav{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap}.nav button{white-space:nowrap}.page-head{flex-direction:column}.metric-grid{gap:7px}.metric{padding:12px;min-height:98px}.metric strong{font-size:20px}.catalog-grid{gap:8px}.catalog-card{min-height:207px}.catalog-card img,.img-fallback{height:112px}.catalog-card.solo{min-height:124px}.catalog-card.solo img,.catalog-card.solo .img-fallback{width:118px;min-height:124px}.card-body{padding:9px}.card-body strong{font-size:13px}.payment-row{grid-template-columns:120px 1fr 82px;font-size:12px}.admin-item{grid-template-columns:52px minmax(0,1fr)}.thumb{width:52px;height:52px}.admin-actions{grid-column:1/-1;justify-content:flex-end}.form-grid{grid-template-columns:1fr}.span2{grid-column:1}.image-row{grid-template-columns:1fr}.image-preview{width:100%;height:160px}}
+
+.sale-success{margin:-6px 0 14px;font-weight:850;font-size:15px}
+
+/* v1.6 - total du panier modifiable / remise */
+.cart-subtotal{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);margin-top:12px;padding-top:12px;color:var(--muted)}
+.cart-subtotal strong{color:var(--text);font-size:16px}
+.manual-total-block{margin-top:10px;padding:12px;border-radius:15px;background:rgba(183,110,121,.08);border:1px solid rgba(183,110,121,.24)}
+.manual-total-block>label{display:block;color:var(--text);font-size:13px;font-weight:900;margin-bottom:7px}
+.manual-total-block>label small{display:block;color:var(--muted);font-size:11px;font-weight:650;margin-top:2px}
+.manual-total-input{position:relative}
+.manual-total-input input{font-size:26px;font-weight:950;color:var(--rose2);padding-right:38px;text-align:right;background:#100d0f}
+.manual-total-input span{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--rose2);font-size:18px;font-weight:900;pointer-events:none}
+.discount-info{margin-top:7px;color:var(--muted);font-size:12px;font-weight:750}
+.discount-info.active{color:#ffc4cb}
+.reset-discount{min-height:32px;padding:4px 0;margin-top:2px;text-align:left}
+.history-discount{margin-top:10px;padding:10px;border-radius:12px;background:rgba(183,110,121,.08);border:1px solid rgba(183,110,121,.17);display:grid;gap:6px}
+.history-discount>div{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px}
+.history-discount>div b{color:var(--text)}
+.history-discount .history-paid{padding-top:6px;border-top:1px solid rgba(183,110,121,.18);font-size:13px;color:var(--text);font-weight:850}
+.history-discount .history-paid b{color:var(--rose2)}

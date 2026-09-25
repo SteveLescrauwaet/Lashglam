@@ -3,15 +3,15 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.3.0';
+  const VERSION = '1.6.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
 
   const PAYMENTS = [
     { id:'espece', label:'Espèce', icon:'€' },
-    { id:'carte_perso', label:'Carte compte perso', icon:'P' },
-    { id:'carte_pro', label:'Carte compte pro', icon:'PRO' }
+    { id:'carte_perso', label:'CB perso', icon:'P' },
+    { id:'carte_pro', label:'CB Pro', icon:'PRO' }
   ];
 
   const DEFAULT_CATALOG = [
@@ -28,8 +28,8 @@
   ].map(([name,type,price,duration_minutes,image_url,sort_order,is_solo]) => ({name,type,price,duration_minutes,image_url,sort_order,is_solo}));
 
   const state = {
-    session:null, user:null, view:'dashboard', month:new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-    catalog:[], sales:[], cart:[], catalogTab:'prestation', payment:'espece', saleDate:toDateInput(new Date()), note:'', busy:false
+    session:null, user:null, view:'sale', month:new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    catalog:[], sales:[], cart:[], catalogTab:'prestation', payment:'espece', saleDate:toDateInput(new Date()), note:'', manualTotal:null, saleSuccess:'', busy:false
   };
 
   const app = document.getElementById('app');
@@ -40,7 +40,28 @@
   function monthLabel(){ return new Intl.DateTimeFormat('fr-BE',{month:'long',year:'numeric'}).format(state.month); }
   function sameMonth(v){ const d=new Date(v); return d.getFullYear()===state.month.getFullYear() && d.getMonth()===state.month.getMonth(); }
   function payInfo(id){ return PAYMENTS.find(p=>p.id===id) || {id,label:id,icon:'?'}; }
-  function saleTotal(s){ return (s.sale_lines||[]).reduce((a,l)=>a+Number(l.unit_price)*Number(l.quantity),0); }
+  const META_PREFIX='[[BEAUTY_CA_META:';
+  function round2(n){ return Math.round((Number(n)||0)*100)/100; }
+  function rawSaleTotal(s){ return round2((s.sale_lines||[]).reduce((a,l)=>a+Number(l.unit_price)*Number(l.quantity),0)); }
+  function parseSaleNote(note){
+    const raw=String(note||'');
+    if(!raw.startsWith(META_PREFIX)) return {text:raw,total:null,base:null};
+    const end=raw.indexOf(']]');
+    if(end<0) return {text:raw,total:null,base:null};
+    try{
+      const meta=JSON.parse(raw.slice(META_PREFIX.length,end));
+      return {text:raw.slice(end+2).replace(/^\n/,''),total:Number(meta.total),base:Number(meta.base)};
+    }catch(_){ return {text:raw,total:null,base:null}; }
+  }
+  function buildSaleNote(text,base,total){
+    const clean=String(text||'').trim(), b=round2(base), t=round2(total);
+    if(Math.abs(b-t)<0.005) return clean;
+    return `${META_PREFIX}${JSON.stringify({base:b,total:t})}]]${clean?'\n'+clean:''}`;
+  }
+  function saleTotal(s){ const meta=parseSaleNote(s.note); return Number.isFinite(meta.total)?round2(meta.total):rawSaleTotal(s); }
+  function saleDisplayNote(s){ return parseSaleNote(s.note).text.trim(); }
+  function saleDiscount(s){ return Math.max(0,round2(rawSaleTotal(s)-saleTotal(s))); }
+  function parseMoney(v){ const n=Number(String(v??'').replace(/\s/g,'').replace(',','.')); return Number.isFinite(n)?round2(n):null; }
   function monthSales(){ return state.sales.filter(s=>sameMonth(s.sale_date)); }
   function notify(msg,type='success'){ const old=document.querySelector('.toast'); if(old) old.remove(); const e=document.createElement('div'); e.className=`toast alert ${type}`; e.textContent=msg; Object.assign(e.style,{position:'fixed',right:'16px',bottom:'16px',zIndex:'500',maxWidth:'360px',boxShadow:'0 12px 40px rgba(0,0,0,.4)'}); document.body.appendChild(e); setTimeout(()=>e.remove(),3200); }
 
@@ -102,7 +123,7 @@
 
   function shellHTML(){
     return `<div class="shell"><header class="topbar"><div class="brand-mark">CA</div><div class="topbar-title"><strong>Suivi Beauty</strong><small>${esc(state.user.email)}</small></div>
-      <nav class="nav">${[['dashboard','Tableau de bord'],['sale','Nouvelle vente'],['history','Historique'],['catalog','Catalogue']].map(([id,l])=>`<button data-view="${id}" class="${state.view===id?'active':''}">${l}</button>`).join('')}</nav>
+      <nav class="nav">${[['sale','Nouvelle vente'],['dashboard','Tableau de bord'],['catalog','Catalogue'],['history','Historique']].map(([id,l])=>`<button data-view="${id}" class="${state.view===id?'active':''}">${l}</button>`).join('')}</nav>
       <div class="top-actions"><span class="connection-dot">Supabase</span><button id="logout" class="secondary">Déconnexion</button></div></header>
       <main id="view" class="page"></main><div class="footer">PWA directe GitHub Pages · v${VERSION}</div></div>`;
   }
@@ -112,7 +133,14 @@
   function bindMonthNav(){ document.getElementById('prevMonth').onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()-1,1);renderView();}; document.getElementById('nextMonth').onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()+1,1);renderView();}; }
 
   function renderDashboard(){
-    const sales=monthSales(); let ca=0,prest=0,prod=0; sales.forEach(s=>{(s.sale_lines||[]).forEach(l=>{const v=Number(l.unit_price)*Number(l.quantity);ca+=v;if(l.type_snapshot==='prestation')prest+=v;else prod+=v;});});
+    const sales=monthSales(); let ca=0,prest=0,prod=0;
+    sales.forEach(s=>{
+      let rawPrest=0,rawProd=0;
+      (s.sale_lines||[]).forEach(l=>{ const v=Number(l.unit_price)*Number(l.quantity); if(l.type_snapshot==='prestation')rawPrest+=v; else rawProd+=v; });
+      const raw=rawPrest+rawProd, paid=saleTotal(s), ratio=raw>0?paid/raw:0;
+      ca+=paid; prest+=rawPrest*ratio; prod+=rawProd*ratio;
+    });
+    ca=round2(ca); prest=round2(prest); prod=round2(prod);
     const payTotals=Object.fromEntries(PAYMENTS.map(p=>[p.id,0])); sales.forEach(s=>payTotals[s.payment_method]=(payTotals[s.payment_method]||0)+saleTotal(s));
     document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Tableau de bord</h1><p>Analyse mensuelle de ton activité.</p></div>${monthNavHTML()}</div>
       <div class="metric-grid"><div class="metric"><span>Chiffre d’affaires</span><strong>${euro(ca)}</strong></div><div class="metric"><span>Prestations</span><strong>${euro(prest)}</strong></div><div class="metric"><span>Produits</span><strong>${euro(prod)}</strong></div><div class="metric"><span>Ventes</span><strong>${sales.length}</strong></div><div class="metric"><span>Panier moyen</span><strong>${euro(sales.length?ca/sales.length:0)}</strong></div></div>
@@ -121,21 +149,51 @@
   }
 
   function renderSale(){
-    const items=state.catalog.filter(x=>x.type===state.catalogTab).sort((a,b)=>a.sort_order-b.sort_order); const total=state.cart.reduce((a,l)=>a+Number(l.item.price)*l.qty,0);
-    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Nouvelle vente</h1><p>Sélectionne les prestations ou produits à encaisser.</p></div></div>
+    const items=state.catalog.filter(x=>x.type===state.catalogTab).sort((a,b)=>a.sort_order-b.sort_order);
+    const baseTotal=round2(state.cart.reduce((a,l)=>a+Number(l.item.price)*l.qty,0));
+    const entered=state.manualTotal===null?baseTotal:Math.min(baseTotal,Math.max(0,round2(state.manualTotal)));
+    const discount=Math.max(0,round2(baseTotal-entered));
+    const discountPct=baseTotal?Math.round(discount/baseTotal*100):0;
+    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Nouvelle vente</h1><p>Sélectionne les prestations ou produits à encaisser.</p></div></div>${state.saleSuccess?`<div class="alert success sale-success">✓ ${esc(state.saleSuccess)}</div>`:''}
       <div class="checkout"><section><div class="catalog-tabs"><button id="tabPrest" class="${state.catalogTab==='prestation'?'primary':'secondary'}">Prestations</button><button id="tabProd" class="${state.catalogTab==='produit'?'primary':'secondary'}">Produits</button></div>
       <div class="catalog-grid">${items.length?items.map(item=>catalogCard(item)).join(''):'<div class="empty">Aucun élément dans cette catégorie.</div>'}</div></section>
       <aside class="cart"><h2>Panier</h2><div class="cart-lines">${state.cart.length?state.cart.map((l,i)=>`<div class="cart-line"><div class="cart-line-head"><strong>${esc(l.item.name)}</strong><b>${euro(l.item.price*l.qty)}</b></div><div class="qty"><button data-minus="${i}">−</button><strong>${l.qty}</strong><button data-plus="${i}">+</button><span>${euro(l.item.price)} / unité</span></div></div>`).join(''):'<div class="empty">Le panier est vide.</div>'}</div>
-      <div class="cart-total"><span>Total</span><strong>${euro(total)}</strong></div><label style="margin-top:12px">Date<input id="saleDate" type="date" value="${state.saleDate}"></label><span style="display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:700">Mode de paiement</span><div class="pay-grid">${PAYMENTS.map(p=>`<button class="pay-btn ${state.payment===p.id?'active':''}" data-pay="${p.id}">${p.icon} ${p.label}</button>`).join('')}</div><label>Cliente / remarque<textarea id="saleNote" placeholder="Facultatif">${esc(state.note)}</textarea></label><button id="saveSale" class="primary full" style="margin-top:12px" ${state.cart.length?'':'disabled'}>Enregistrer la vente</button></aside></div>`;
+      <div class="cart-subtotal"><span>Sous-total</span><strong>${euro(baseTotal)}</strong></div>
+      <div class="manual-total-block"><label for="manualTotal">Total à payer <small>(modifiable pour appliquer une remise)</small></label><div class="manual-total-input"><input id="manualTotal" inputmode="decimal" autocomplete="off" value="${entered.toFixed(2).replace('.',',')}" ${state.cart.length?'':'disabled'}><span>€</span></div><div id="discountInfo" class="discount-info ${discount>0?'active':''}">${discount>0?`Remise : −${euro(discount)} (${discountPct} %)`:'Aucune remise'}</div>${discount>0?'<button id="resetDiscount" class="text-btn reset-discount" type="button">Annuler la remise</button>':''}</div>
+      <label style="margin-top:12px">Date<input id="saleDate" type="date" value="${state.saleDate}"></label><span style="display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:700">Mode de paiement</span><div class="pay-grid">${PAYMENTS.map(p=>`<button class="pay-btn ${state.payment===p.id?'active':''}" data-pay="${p.id}">${p.icon} ${p.label}</button>`).join('')}</div><label>Cliente / remarque<textarea id="saleNote" placeholder="Facultatif">${esc(state.note)}</textarea></label><button id="saveSale" class="primary full" style="margin-top:12px" ${state.cart.length?'':'disabled'}>Enregistrer la vente</button></aside></div>`;
     document.getElementById('tabPrest').onclick=()=>{state.catalogTab='prestation';renderSale();}; document.getElementById('tabProd').onclick=()=>{state.catalogTab='produit';renderSale();};
     document.querySelectorAll('[data-add]').forEach(x=>x.onclick=()=>addCart(x.dataset.add)); document.querySelectorAll('[data-minus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.minus,-1)); document.querySelectorAll('[data-plus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.plus,1)); document.querySelectorAll('[data-pay]').forEach(x=>x.onclick=()=>{state.payment=x.dataset.pay;renderSale();});
+    const totalInput=document.getElementById('manualTotal');
+    totalInput.oninput=e=>{
+      const value=parseMoney(e.target.value);
+      if(value===null) return;
+      state.manualTotal=Math.min(baseTotal,Math.max(0,value));
+      const d=Math.max(0,round2(baseTotal-state.manualTotal)), pct=baseTotal?Math.round(d/baseTotal*100):0;
+      const info=document.getElementById('discountInfo'); if(info){ info.classList.toggle('active',d>0); info.textContent=d>0?`Remise : −${euro(d)} (${pct} %)`:'Aucune remise'; }
+    };
+    totalInput.onblur=e=>{ const value=parseMoney(e.target.value); state.manualTotal=value===null?null:Math.min(baseTotal,Math.max(0,value)); renderSale(); };
+    const reset=document.getElementById('resetDiscount'); if(reset) reset.onclick=()=>{state.manualTotal=null;renderSale();};
     document.getElementById('saleDate').onchange=e=>state.saleDate=e.target.value; document.getElementById('saleNote').oninput=e=>state.note=e.target.value; document.getElementById('saveSale').onclick=saveSale;
   }
   function catalogCard(item){ const img=item.image_url?`<img src="${esc(item.image_url)}" alt="" onerror="this.outerHTML='<div class=&quot;img-fallback&quot;>Image</div>'">`:'<div class="img-fallback">Image</div>'; return `<article class="catalog-card ${item.is_solo?'solo':''}" data-add="${item.id}">${img}<div class="card-body"><strong>${esc(item.name)}</strong><small>${item.type==='prestation'&&item.duration_minutes?durationLabel(item.duration_minutes):item.type==='produit'?'Produit':''}</small><b>${euro(item.price)}</b><div class="add-hint">+ Ajouter</div></div></article>`; }
   function durationLabel(m){ const h=Math.floor(m/60),min=m%60; return h&&min?`${h}h${String(min).padStart(2,'0')}`:h?`${h}h`:`${min} min`; }
-  function addCart(id){ const item=state.catalog.find(x=>x.id===id); if(!item)return; const l=state.cart.find(x=>x.item.id===id); if(l)l.qty++; else state.cart.push({item,qty:1}); renderSale(); }
-  function changeQty(i,d){ state.cart[i].qty+=d; if(state.cart[i].qty<=0)state.cart.splice(i,1); renderSale(); }
-  async function saveSale(){ if(!state.cart.length)return; const btn=document.getElementById('saveSale'); btn.disabled=true; btn.textContent='Enregistrement…'; const dt=new Date(`${state.saleDate}T12:00:00`); const {data:sale,error}=await sb.from('sales').insert({user_id:state.user.id,sale_date:dt.toISOString(),payment_method:state.payment,note:state.note.trim()}).select().single(); if(error){notify(error.message,'error');renderSale();return;} const lines=state.cart.map(l=>({user_id:state.user.id,sale_id:sale.id,catalog_item_id:l.item.id,name_snapshot:l.item.name,type_snapshot:l.item.type,unit_price:l.item.price,quantity:l.qty})); const {error:lineErr}=await sb.from('sale_lines').insert(lines); if(lineErr){await sb.from('sales').delete().eq('id',sale.id);notify(lineErr.message,'error');renderSale();return;} state.cart=[];state.note='';state.saleDate=toDateInput(new Date());await loadAll();state.view='history';render();notify('Vente enregistrée.'); }
+  function addCart(id){ state.saleSuccess=''; state.manualTotal=null; const item=state.catalog.find(x=>x.id===id); if(!item)return; const l=state.cart.find(x=>x.item.id===id); if(l)l.qty++; else state.cart.push({item,qty:1}); renderSale(); }
+  function changeQty(i,d){ state.manualTotal=null; state.cart[i].qty+=d; if(state.cart[i].qty<=0)state.cart.splice(i,1); renderSale(); }
+  async function saveSale(){
+    if(!state.cart.length)return;
+    const baseTotal=round2(state.cart.reduce((a,l)=>a+Number(l.item.price)*l.qty,0));
+    const finalTotal=state.manualTotal===null?baseTotal:Math.min(baseTotal,Math.max(0,round2(state.manualTotal)));
+    const btn=document.getElementById('saveSale'); btn.disabled=true; btn.textContent='Enregistrement…';
+    const dt=new Date(`${state.saleDate}T12:00:00`);
+    const storedNote=buildSaleNote(state.note,baseTotal,finalTotal);
+    const {data:sale,error}=await sb.from('sales').insert({user_id:state.user.id,sale_date:dt.toISOString(),payment_method:state.payment,note:storedNote}).select().single();
+    if(error){notify(error.message,'error');renderSale();return;}
+    const lines=state.cart.map(l=>({user_id:state.user.id,sale_id:sale.id,catalog_item_id:l.item.id,name_snapshot:l.item.name,type_snapshot:l.item.type,unit_price:l.item.price,quantity:l.qty}));
+    const {error:lineErr}=await sb.from('sale_lines').insert(lines);
+    if(lineErr){await sb.from('sales').delete().eq('id',sale.id);notify(lineErr.message,'error');renderSale();return;}
+    state.cart=[]; state.note=''; state.manualTotal=null; state.saleDate=toDateInput(new Date()); state.saleSuccess='Vente validée';
+    await loadAll(); state.view='sale'; render(); notify(finalTotal<baseTotal?`Vente validée avec une remise de ${euro(baseTotal-finalTotal)}.`:'Vente validée.');
+  }
 
   function renderHistory(){
     const sales=monthSales(), total=sales.reduce((a,s)=>a+saleTotal(s),0);
@@ -146,7 +204,10 @@
   }
   function historyGroup(p,sales){
     const total=sales.reduce((a,s)=>a+saleTotal(s),0);
-    return `<details class="pay-group" open><summary><div class="pay-icon">${p.icon}</div><div class="pay-title"><strong>${p.label}</strong><span>${sales.length} vente${sales.length>1?'s':''}</span></div><b>${euro(total)}</b></summary><div class="pay-body">${sales.length?sales.map(s=>`<details class="sale-card"><summary><div><strong>${esc(s.note||'Vente')}</strong><span>${dateLabel(s.sale_date)}</span></div><b>${euro(saleTotal(s))}</b></summary><div class="sale-details">${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div class="sale-line-main"><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)} · ${l.type_snapshot==='produit'?'Produit':'Prestation'}</small></div><div class="sale-line-actions"><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b><button class="history-delete-line" type="button" data-delete-line="${l.id}" data-sale-id="${s.id}" title="Supprimer cette ligne">×</button></div></div>`).join('')}<div class="sale-footer"><button class="danger-btn compact" type="button" data-delete-sale="${s.id}">Supprimer la vente complète</button></div></div></details>`).join(''):'<div class="empty">Aucune vente.</div>'}</div></details>`;
+    return `<details class="pay-group" open><summary><div class="pay-icon">${p.icon}</div><div class="pay-title"><strong>${p.label}</strong><span>${sales.length} vente${sales.length>1?'s':''}</span></div><b>${euro(total)}</b></summary><div class="pay-body">${sales.length?sales.map(s=>{
+      const raw=rawSaleTotal(s), paid=saleTotal(s), discount=saleDiscount(s), note=saleDisplayNote(s);
+      return `<details class="sale-card"><summary><div><strong>${esc(note||'Vente')}</strong><span>${dateLabel(s.sale_date)}</span></div><b>${euro(paid)}</b></summary><div class="sale-details">${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div class="sale-line-main"><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)} · ${l.type_snapshot==='produit'?'Produit':'Prestation'}</small></div><div class="sale-line-actions"><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b><button class="history-delete-line" type="button" data-delete-line="${l.id}" data-sale-id="${s.id}" title="Supprimer cette ligne">×</button></div></div>`).join('')}${discount>0?`<div class="history-discount"><div><span>Sous-total</span><b>${euro(raw)}</b></div><div><span>Remise appliquée</span><b>−${euro(discount)}</b></div><div class="history-paid"><span>Total payé</span><b>${euro(paid)}</b></div></div>`:''}<div class="sale-footer"><button class="danger-btn compact" type="button" data-delete-sale="${s.id}">Supprimer la vente complète</button></div></div></details>`;
+    }).join(''):'<div class="empty">Aucune vente.</div>'}</div></details>`;
   }
   async function deleteHistorySale(id){
     const sale=state.sales.find(s=>s.id===id);
@@ -169,8 +230,13 @@
       await loadAll(); renderHistory(); notify('Vente supprimée.'); return;
     }
     if(!confirm(`Supprimer « ${line.name_snapshot} » de cette vente ?`)) return;
+    const oldBase=rawSaleTotal(sale), oldDiscount=saleDiscount(sale), removed=round2(Number(line.unit_price)*Number(line.quantity));
+    const newBase=Math.max(0,round2(oldBase-removed)), newTotal=Math.max(0,round2(newBase-oldDiscount));
     const {error}=await sb.from('sale_lines').delete().eq('id',lineId).eq('user_id',state.user.id);
     if(error){ notify('Suppression : '+error.message,'error'); return; }
+    const newNote=buildSaleNote(saleDisplayNote(sale),newBase,newTotal);
+    const {error:noteErr}=await sb.from('sales').update({note:newNote}).eq('id',saleId).eq('user_id',state.user.id);
+    if(noteErr) notify('Ligne supprimée, mais la remise n’a pas pu être recalculée : '+noteErr.message,'error');
     await loadAll(); renderHistory(); notify('Ligne supprimée de la vente.');
   }
 

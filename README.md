@@ -24,7 +24,7 @@ Ne mets jamais de clé `service_role` dans ce projet.
 - prestations cil à cil / mixte / volume russe affichées par paires ;
 - rehaussement, rehaussement avec teinture, Browlift et Dépose seuls sur une ligne ;
 - panier et encaissement ;
-- Espèce / Carte compte perso / Carte compte pro ;
+- Espèce / CB perso / CB Pro ;
 - historique mensuel regroupé par moyen de paiement ;
 - tableau de bord mensuel ;
 - thème noir et vieux rose ;
@@ -40,3 +40,21 @@ Version : 1.2.0
 - Si on supprime le seul élément d'une vente, l'application propose de supprimer la vente complète.
 - Le chiffre d'affaires et les totaux par moyen de paiement se recalculent automatiquement après suppression.
 - Aucun nouveau script SQL n'est nécessaire si `supabase/schema.sql` avait déjà été exécuté.
+
+
+## Version 1.4.0
+- Onglets : Nouvelle vente → Tableau de bord → Catalogue → Historique.
+- L'application s'ouvre sur Nouvelle vente.
+- Après validation, un message « Vente validée » s'affiche et l'application reste sur Nouvelle vente.
+
+
+## Version 1.5.0
+- Les moyens de paiement par carte sont renommés **CB perso** et **CB Pro**.
+- Les identifiants internes Supabase restent inchangés afin de conserver la compatibilité avec les ventes déjà enregistrées.
+
+
+## Version 1.6
+- Le total du panier peut être modifié manuellement pour appliquer une remise.
+- Le sous-total, la remise et le total payé apparaissent dans l’historique.
+- Le chiffre d’affaires et les moyens de paiement utilisent automatiquement le montant réellement payé.
+- Aucune modification SQL supplémentaire n’est nécessaire.
