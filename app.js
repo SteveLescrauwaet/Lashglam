@@ -3,14 +3,14 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.12.0';
+  const VERSION = '1.13.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
 
   const PAYMENTS = [
-    { id:'espece', label:'Espèce', icon:'€' },
-    { id:'carte_perso', label:'CB perso', icon:'P' },
+    { id:'espece', label:'Espèces', icon:'€' },
+    { id:'carte_perso', label:'CB Perso', icon:'P' },
     { id:'carte_pro', label:'CB Pro', icon:'PRO' }
   ];
 

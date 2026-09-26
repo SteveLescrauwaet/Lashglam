@@ -1,3 +1,15 @@
+# Beauty CA PWA v1.13
+
+Mise à jour des moyens de paiement :
+
+- **Espèces** : bouton vert
+- **CB Perso** : bouton orange
+- **CB Pro** : bouton jaune
+
+Les identifiants internes Supabase restent inchangés (`espece`, `carte_perso`, `carte_pro`) : aucune modification SQL n'est nécessaire et les anciennes ventes restent compatibles.
+
+---
+
 # Beauty CA PWA v1.12
 
 Mise à jour : dans **Nouvelle vente**, le client peut être recherché directement en tapant son prénom, son nom ou son numéro client. Les résultats apparaissent sous le champ et un clic sélectionne le client. La touche **Entrée** sélectionne également le premier résultat.

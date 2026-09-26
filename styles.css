@@ -107,3 +107,11 @@ button:disabled,input:disabled,select:disabled{opacity:.48;cursor:not-allowed}
 .client-search-result strong{font-size:14px}
 .client-search-result span{font-size:11px}
 @media(max-width:700px){.client-search-sale-row{grid-template-columns:1fr auto}.client-search-sale input{font-size:16px}}
+
+/* v1.13 - couleurs des moyens de paiement */
+.pay-btn[data-pay="espece"]{background:#238636;color:#fff;border-color:#2ea043}
+.pay-btn[data-pay="carte_perso"]{background:#f28c28;color:#17100a;border-color:#ff9f43}
+.pay-btn[data-pay="carte_pro"]{background:#f2c94c;color:#17130a;border-color:#ffe06b}
+.pay-btn[data-pay="espece"]:hover,.pay-btn[data-pay="carte_perso"]:hover,.pay-btn[data-pay="carte_pro"]:hover{filter:brightness(1.08)}
+.pay-btn[data-pay="espece"].active,.pay-btn[data-pay="carte_perso"].active,.pay-btn[data-pay="carte_pro"].active{box-shadow:0 0 0 3px rgba(255,255,255,.18),0 0 0 5px rgba(183,110,121,.45);transform:translateY(-1px)}
+.pay-btn:disabled{opacity:.42;cursor:not-allowed}
