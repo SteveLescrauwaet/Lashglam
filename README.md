@@ -1,3 +1,7 @@
+# LASHGLAM PWA – version 1.14.0
+
+Logo LASHGLAM intégré dans l’application (écran de chargement, connexion et barre supérieure).
+
 # Beauty CA PWA v1.13
 
 Mise à jour des moyens de paiement :

@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.13.0';
+  const VERSION = '1.14.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -208,7 +208,7 @@
 
   function renderAuth(){
     app.innerHTML=`<div class="center-screen"><form id="authForm" class="auth-card">
-      <div class="brand-mark">CA</div><p class="eyebrow">SUIVI D’ACTIVITÉ</p><h1>Connexion</h1>
+      <img class="brand-logo" src="./logo-lashglam.png" alt="LASHGLAM"><p class="eyebrow">LASHGLAM</p><h1>Connexion</h1>
       <p class="muted">Prestations, produits, paiements et chiffre d’affaires synchronisés avec Supabase.</p>
       <label>E-mail<input id="email" type="email" required autocomplete="email"></label>
       <label>Mot de passe<input id="password" type="password" required minlength="6" autocomplete="current-password"></label>
@@ -223,7 +223,7 @@
   }
 
   function shellHTML(){
-    return `<div class="shell"><header class="topbar"><div class="brand-mark">CA</div><div class="topbar-title"><strong>Suivi Beauty</strong><small>${esc(state.user.email)}</small></div>
+    return `<div class="shell"><header class="topbar"><img class="brand-logo" src="./logo-lashglam.png" alt="LASHGLAM"><div class="topbar-title"><strong>LASHGLAM</strong><small class="brand-subtitle">Lash Lift Studio</small><small>${esc(state.user.email)}</small></div>
       <nav class="nav">${[['sale','Nouvelle vente'],['dashboard','Tableau de bord'],['catalog','Catalogue'],['clients','Clients'],['history','Historique']].map(([id,l])=>`<button data-view="${id}" class="${state.view===id?'active':''}">${l}</button>`).join('')}</nav>
       <div class="top-actions"><span class="connection-dot">Supabase</span><button id="logout" class="secondary">Déconnexion</button></div></header>
       <main id="view" class="page"></main><div class="footer">PWA directe GitHub Pages · v${VERSION}</div></div>`;

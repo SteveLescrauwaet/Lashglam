@@ -9,6 +9,13 @@
 button,input,select,textarea{font:inherit} button{cursor:pointer}.hidden{display:none!important}
 .boot-screen,.center-screen{min-height:100vh;display:grid;place-items:center;padding:24px}.boot-screen>div,.boot-screen>p{grid-column:1}.boot-screen{align-content:center;gap:12px}
 .brand-mark{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;background:var(--rose);color:#090909;font-weight:1000;font-size:20px}
+.brand-logo{width:58px;height:58px;border-radius:18px;display:block;object-fit:cover;box-shadow:0 10px 30px rgba(183,110,121,.22)}
+.boot-logo{width:min(280px,72vw);max-width:280px;display:block;filter:drop-shadow(0 0 28px rgba(215,161,170,.35));border-radius:28px}
+.topbar .brand-logo{width:58px;height:58px;border-radius:16px}
+.auth-card .brand-logo{margin:0 auto 6px auto;width:88px;height:88px;border-radius:24px}
+.topbar-title strong{font-size:16px}
+.topbar-title .brand-subtitle{color:var(--rose2);font-weight:700}
+
 .auth-card{width:min(430px,100%);padding:26px;border-radius:26px;background:var(--surface);border:1px solid var(--border);box-shadow:0 22px 70px rgba(0,0,0,.42);display:grid;gap:14px}
 .auth-card h1{margin:0}.eyebrow{margin:0;color:var(--rose2);font-size:12px;letter-spacing:.16em;font-weight:900}.muted{color:var(--muted)}
 label{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:13px;font-weight:700} input,select,textarea{width:100%;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:12px;padding:10px 12px;outline:none} input,select{min-height:43px} textarea{min-height:76px;resize:vertical} input:focus,select:focus,textarea:focus{border-color:var(--rose)}
