@@ -1,3 +1,23 @@
+# LASHGLAM PWA – version 1.16.0
+
+## Important : passage au code PIN uniquement
+
+Cette version ne dépend plus d’une session Supabase enregistrée sur l’appareil. L’accès se fait avec le **code 2502** uniquement.
+
+Avant de remettre les fichiers sur GitHub, exécute **une seule fois** dans Supabase > SQL Editor :
+
+`supabase/update_v1.16_pin_only.sql`
+
+Cette mise à jour conserve toutes les ventes, clientes, prestations et réglages existants. Elle crée des fonctions Supabase qui vérifient le code côté base de données.
+
+Ensuite, remplace les fichiers du dépôt GitHub par ceux de cette version et fais **Commit changes**.
+
+Le bouton **Verrouiller** redemande le code 2502. Aucun identifiant ni mot de passe n’est nécessaire sur un nouvel appareil.
+
+> Remarque de sécurité : un code à 4 chiffres est moins robuste qu’un vrai compte avec mot de passe/MFA. Il correspond ici volontairement au niveau de protection demandé pour cette application.
+
+---
+
 # LASHGLAM PWA – version 1.15.0
 
 Accès quotidien par code PIN uniquement : **2502**. L’identifiant et le mot de passe ne sont plus affichés. La session Supabase existante reste active en arrière-plan pour conserver les règles RLS et la sécurité de la base. Le bouton **Déconnexion** est remplacé par **Verrouiller**.

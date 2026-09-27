@@ -3,9 +3,9 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.15.0';
+  const VERSION = '1.16.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
 
   const PAYMENTS = [
@@ -28,16 +28,9 @@
   ].map(([name,type,price,duration_minutes,image_url,sort_order,is_solo]) => ({name,type,price,duration_minutes,image_url,sort_order,is_solo}));
 
   const state = {
-    session:null, user:null, pinUnlocked:sessionStorage.getItem('lashglam_pin_unlocked')==='1', view:'sale', month:new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    pinCode:sessionStorage.getItem('lashglam_pin_code')||'', pinUnlocked:false, ownerId:null, view:'sale', month:new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     catalog:[], clients:[], sales:[], cart:[], catalogTab:'prestation', selectedClientId:null, payment:null, saleDate:toDateInput(new Date()), note:'', manualTotal:null, saleSuccess:'', clientError:null, settingsError:null, loyaltyDiscountPercent:10, busy:false
   };
-  const PIN_HASH = '447512622f9767785e7dac3176232565e58fbf84ec87f783607cfbb95d82375b';
-  async function hashText(value){
-    const data=new TextEncoder().encode(String(value));
-    const digest=await crypto.subtle.digest('SHA-256',data);
-    return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
-  }
-
   const app = document.getElementById('app');
   const euro = n => new Intl.NumberFormat('fr-BE',{style:'currency',currency:'EUR'}).format(Number(n||0));
   const esc = s => String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -169,49 +162,38 @@
   function notify(msg,type='success'){ const old=document.querySelector('.toast'); if(old) old.remove(); const e=document.createElement('div'); e.className=`toast alert ${type}`; e.textContent=msg; Object.assign(e.style,{position:'fixed',right:'16px',bottom:'16px',zIndex:'500',maxWidth:'360px',boxShadow:'0 12px 40px rgba(0,0,0,.4)'}); document.body.appendChild(e); setTimeout(()=>e.remove(),3200); }
 
   async function init(){
-    const {data:{session}} = await sb.auth.getSession();
-    state.session=session; state.user=session?.user||null;
-    sb.auth.onAuthStateChange(async (_event, session) => {
-      state.session=session; state.user=session?.user||null;
-      if(!state.user){ state.pinUnlocked=false; sessionStorage.removeItem('lashglam_pin_unlocked'); }
-      if(state.user) await loadAll();
-      render();
-    });
-    if(state.user) await loadAll();
+    if(state.pinCode){
+      try{
+        await loadAll(false);
+        state.pinUnlocked=true;
+      }catch(_){
+        state.pinCode='';
+        state.pinUnlocked=false;
+        sessionStorage.removeItem('lashglam_pin_code');
+      }
+    }
     render();
     if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
   }
 
-  async function loadAll(){
-    state.busy=true; render();
-    await seedDefaults();
-    const [catRes,clientsRes,salesRes,settingsRes] = await Promise.all([
-      sb.from('catalog_items').select('*').order('type').order('sort_order'),
-      sb.from('clients').select('*').order('client_number'),
-      sb.from('sales').select('*, sale_lines(*)').order('sale_date',{ascending:false}),
-      sb.from('user_settings').select('loyalty_discount_percent').eq('user_id',state.user.id).maybeSingle()
-    ]);
-    if(catRes.error) notify('Catalogue : '+catRes.error.message,'error'); else state.catalog=catRes.data||[];
-    if(clientsRes.error){ state.clientError=clientsRes.error.message; state.clients=[]; notify('Clients : '+clientsRes.error.message,'error'); } else { state.clientError=null; state.clients=clientsRes.data||[]; }
-    if(salesRes.error) notify('Historique : '+salesRes.error.message,'error'); else state.sales=salesRes.data||[];
-    if(settingsRes.error){ state.settingsError=settingsRes.error.message; state.loyaltyDiscountPercent=10; } else { state.settingsError=null; state.loyaltyDiscountPercent=Number(settingsRes.data?.loyalty_discount_percent ?? 10); }
-    state.busy=false;
-  }
-
-  async function seedDefaults(){
-    if(!state.user) return;
-    const {data:settings} = await sb.from('user_settings').select('*').eq('user_id',state.user.id).maybeSingle();
-    if(settings?.defaults_seeded) return;
-    const {count} = await sb.from('catalog_items').select('*',{count:'exact',head:true}).eq('user_id',state.user.id);
-    if(!count){
-      const rows=DEFAULT_CATALOG.map(x=>({...x,user_id:state.user.id}));
-      const {error}=await sb.from('catalog_items').insert(rows); if(error){ notify('Initialisation : '+error.message,'error'); return; }
+  async function loadAll(seedIfEmpty=true){
+    const {data,error}=await sb.rpc('app_load_all',{p_pin:state.pinCode});
+    if(error) throw error;
+    state.ownerId=data?.owner_id||null;
+    state.catalog=Array.isArray(data?.catalog)?data.catalog:[];
+    state.clients=Array.isArray(data?.clients)?data.clients:[];
+    state.sales=Array.isArray(data?.sales)?data.sales:[];
+    state.loyaltyDiscountPercent=Number(data?.settings?.loyalty_discount_percent ?? 10);
+    state.clientError=null;
+    state.settingsError=null;
+    if(seedIfEmpty && state.catalog.length===0){
+      const seed=await sb.rpc('app_seed_defaults',{p_pin:state.pinCode,p_items:DEFAULT_CATALOG});
+      if(seed.error) throw seed.error;
+      return loadAll(false);
     }
-    await sb.from('user_settings').upsert({user_id:state.user.id,defaults_seeded:true},{onConflict:'user_id'});
   }
 
   function render(){
-    if(!state.user){ renderSessionMissing(); return; }
     if(!state.pinUnlocked){ renderPinLock(); return; }
     app.innerHTML = shellHTML();
     bindShell();
@@ -235,39 +217,37 @@
       e.preventDefault();
       const pin=input.value.trim();
       if(pin.length!==4){ msg.innerHTML='<div class="alert error">Entre un code à 4 chiffres.</div>'; return; }
-      const hash=await hashText(pin);
-      if(hash!==PIN_HASH){
+      const submit=form.querySelector('button[type="submit"]');
+      submit.disabled=true; submit.textContent='Vérification…';
+      state.pinCode=pin;
+      try{
+        await loadAll();
+        state.pinUnlocked=true;
+        sessionStorage.setItem('lashglam_pin_code',pin);
+        render();
+      }catch(err){
+        state.pinCode=''; state.pinUnlocked=false;
+        sessionStorage.removeItem('lashglam_pin_code');
         input.value=''; input.focus();
-        msg.innerHTML='<div class="alert error">Code incorrect.</div>';
-        return;
+        const migrationMissing=/app_load_all|function .* does not exist|schema cache/i.test(String(err?.message||''));
+        msg.innerHTML=`<div class="alert error">${migrationMissing?'La mise à jour Supabase v1.16 doit être exécutée une fois.':'Code incorrect.'}</div>`;
+        submit.disabled=false; submit.textContent='Ouvrir l’application';
       }
-      state.pinUnlocked=true;
-      sessionStorage.setItem('lashglam_pin_unlocked','1');
-      render();
     };
-  }
-
-  function renderSessionMissing(){
-    app.innerHTML=`<div class="center-screen"><div class="auth-card pin-card">
-      <img class="brand-logo pin-logo" src="./logo-lashglam.png" alt="LASHGLAM">
-      <p class="eyebrow">LASHGLAM</p><h1>Session à réactiver</h1>
-      <div class="alert error">La session sécurisée Supabase n’est plus présente sur cet appareil.</div>
-      <p class="muted">Le code seul protège l’accès quotidien, mais la base reste volontairement sécurisée par Supabase. Si les données du navigateur sont effacées ou si tu changes d’appareil, une réactivation unique de la session sera nécessaire.</p>
-      <small class="muted">Version ${VERSION}</small>
-    </div></div>`;
   }
 
   function shellHTML(){
     return `<div class="shell"><header class="topbar"><img class="brand-logo" src="./logo-lashglam.png" alt="LASHGLAM"><div class="topbar-title"><strong>LASHGLAM</strong><small class="brand-subtitle">Lash Lift Studio</small></div>
       <nav class="nav">${[['sale','Nouvelle vente'],['dashboard','Tableau de bord'],['catalog','Catalogue'],['clients','Clients'],['history','Historique']].map(([id,l])=>`<button data-view="${id}" class="${state.view===id?'active':''}">${l}</button>`).join('')}</nav>
-      <div class="top-actions"><span class="connection-dot">Supabase</span><button id="lockApp" class="secondary">Verrouiller</button></div></header>
+      <div class="top-actions"><span class="connection-dot">Supabase · PIN</span><button id="lockApp" class="secondary">Verrouiller</button></div></header>
       <main id="view" class="page"></main><div class="footer">PWA directe GitHub Pages · v${VERSION}</div></div>`;
   }
   function bindShell(){
     document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();});
     document.getElementById('lockApp').onclick=()=>{
       state.pinUnlocked=false;
-      sessionStorage.removeItem('lashglam_pin_unlocked');
+      state.pinCode='';
+      sessionStorage.removeItem('lashglam_pin_code');
       render();
     };
   }
@@ -416,11 +396,9 @@
     const btn=document.getElementById('saveSale'); btn.disabled=true; btn.textContent='Enregistrement…';
     const dt=new Date(`${state.saleDate}T12:00:00`);
     const storedNote=buildSaleNote(state.note,baseTotal,finalTotal);
-    const {data:sale,error}=await sb.from('sales').insert({user_id:state.user.id,client_id:client.id,sale_date:dt.toISOString(),payment_method:state.payment,note:storedNote}).select().single();
+    const lines=state.cart.map(l=>({catalog_item_id:l.item.id,name_snapshot:l.item.name,type_snapshot:l.item.type,unit_price:l.item.price,quantity:l.qty}));
+    const {error}=await sb.rpc('app_save_sale',{p_pin:state.pinCode,p_client_id:client.id,p_sale_date:dt.toISOString(),p_payment_method:state.payment,p_note:storedNote,p_lines:lines});
     if(error){notify(error.message,'error');renderSale();return;}
-    const lines=state.cart.map(l=>({user_id:state.user.id,sale_id:sale.id,catalog_item_id:l.item.id,name_snapshot:l.item.name,type_snapshot:l.item.type,unit_price:l.item.price,quantity:l.qty}));
-    const {error:lineErr}=await sb.from('sale_lines').insert(lines);
-    if(lineErr){await sb.from('sales').delete().eq('id',sale.id);notify(lineErr.message,'error');renderSale();return;}
     const loyaltyApplied=loyalty.eligible;
     state.cart=[]; state.note=''; state.manualTotal=null; state.saleDate=toDateInput(new Date()); state.selectedClientId=null; state.payment=null;
     state.saleSuccess=`Vente validée pour ${clientCode(client)} - ${clientName(client)}${loyaltyApplied?` · remise fidélité ${loyaltyPctText} %`:''}`;
@@ -448,7 +426,7 @@
     if(!sale) return;
     const amount=euro(saleTotal(sale));
     if(!confirm(`Supprimer définitivement cette vente de ${amount} ?\n\nCette action supprimera aussi toutes les prestations et tous les produits de cette vente.`)) return;
-    const {error}=await sb.from('sales').delete().eq('id',id).eq('user_id',state.user.id);
+    const {error}=await sb.rpc('app_delete_sale',{p_pin:state.pinCode,p_sale_id:id});
     if(error){ notify('Suppression : '+error.message,'error'); return; }
     await loadAll(); renderHistory(); notify('Vente supprimée.');
   }
@@ -459,18 +437,16 @@
     const lines=sale.sale_lines||[];
     if(lines.length===1){
       if(!confirm(`« ${line.name_snapshot} » est le seul élément de cette vente.\n\nSupprimer la vente complète ?`)) return;
-      const {error}=await sb.from('sales').delete().eq('id',saleId).eq('user_id',state.user.id);
+      const {error}=await sb.rpc('app_delete_sale',{p_pin:state.pinCode,p_sale_id:saleId});
       if(error){ notify('Suppression : '+error.message,'error'); return; }
       await loadAll(); renderHistory(); notify('Vente supprimée.'); return;
     }
     if(!confirm(`Supprimer « ${line.name_snapshot} » de cette vente ?`)) return;
     const oldBase=rawSaleTotal(sale), oldDiscount=saleDiscount(sale), removed=round2(Number(line.unit_price)*Number(line.quantity));
     const newBase=Math.max(0,round2(oldBase-removed)), newTotal=Math.max(0,round2(newBase-oldDiscount));
-    const {error}=await sb.from('sale_lines').delete().eq('id',lineId).eq('user_id',state.user.id);
-    if(error){ notify('Suppression : '+error.message,'error'); return; }
     const newNote=buildSaleNote(saleDisplayNote(sale),newBase,newTotal);
-    const {error:noteErr}=await sb.from('sales').update({note:newNote}).eq('id',saleId).eq('user_id',state.user.id);
-    if(noteErr) notify('Ligne supprimée, mais la remise n’a pas pu être recalculée : '+noteErr.message,'error');
+    const {error}=await sb.rpc('app_delete_sale_line',{p_pin:state.pinCode,p_sale_id:saleId,p_line_id:lineId,p_new_note:newNote});
+    if(error){ notify('Suppression : '+error.message,'error'); return; }
     await loadAll(); renderHistory(); notify('Ligne supprimée de la vente.');
   }
 
@@ -491,7 +467,7 @@
     if(!Number.isFinite(value)||value<0||value>100){ notify('Indique un pourcentage compris entre 0 et 100.','error'); return; }
     const rate=Math.round(value*100)/100;
     const btn=document.getElementById('saveLoyaltyRate'); if(btn){btn.disabled=true;btn.textContent='Enregistrement…';}
-    const {error}=await sb.from('user_settings').upsert({user_id:state.user.id,loyalty_discount_percent:rate},{onConflict:'user_id'});
+    const {error}=await sb.rpc('app_set_loyalty',{p_pin:state.pinCode,p_rate:rate});
     if(error){ notify('Réglage fidélité : '+error.message,'error'); if(btn){btn.disabled=false;btn.textContent='Enregistrer';} return; }
     state.loyaltyDiscountPercent=rate; state.settingsError=null; renderClients(); notify(`Remise fidélité réglée à ${percentLabel(rate)} %.`);
   }
@@ -507,14 +483,35 @@
     const close=()=>wrap.remove(); document.getElementById('closeClientModal').onclick=close; document.getElementById('cancelClientModal').onclick=close; wrap.onclick=e=>{if(e.target===wrap)close();};
     document.getElementById('clientForm').onsubmit=async e=>{
       e.preventDefault(); const btn=e.submitter; btn.disabled=true; btn.textContent='Enregistrement…';
-      const row={user_id:state.user.id,first_name:document.getElementById('cFirstName').value.trim(),last_name:document.getElementById('cLastName').value.trim(),email:document.getElementById('cEmail').value.trim()||null,phone:document.getElementById('cPhone').value.trim()||null};
-      const q=client?sb.from('clients').update(row).eq('id',client.id).eq('user_id',state.user.id):sb.from('clients').insert(row);
-      const {data,error}=await q.select().single();
+      const row={first_name:document.getElementById('cFirstName').value.trim(),last_name:document.getElementById('cLastName').value.trim(),email:document.getElementById('cEmail').value.trim()||null,phone:document.getElementById('cPhone').value.trim()||null};
+      const {data,error}=await sb.rpc('app_save_client',{p_pin:state.pinCode,p_client_id:client?.id||null,p_client:row});
       if(error){document.getElementById('clientFormMsg').innerHTML=`<div class="alert error">${esc(error.message)}</div>`;btn.disabled=false;btn.textContent=client?'Enregistrer':'Créer le client';return;}
       close(); await loadAll();
       if(selectAfter){ state.selectedClientId=data.id; state.payment=null; state.manualTotal=null; state.view='sale'; render(); notify(`${clientCode(data)} - ${clientName(data)} créé et sélectionné.`); }
       else { state.view='clients'; render(); notify(client?'Fiche client modifiée.':`${clientCode(data)} - ${clientName(data)} créé.`); }
     };
+  }
+
+  async function imageFileToDataUrl(file){
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onerror=()=>reject(new Error('Impossible de lire l’image.'));
+      reader.onload=()=>{
+        const img=new Image();
+        img.onerror=()=>reject(new Error('Format d’image non reconnu.'));
+        img.onload=()=>{
+          const max=900, scale=Math.min(1,max/Math.max(img.width,img.height));
+          const canvas=document.createElement('canvas');
+          canvas.width=Math.max(1,Math.round(img.width*scale));
+          canvas.height=Math.max(1,Math.round(img.height*scale));
+          const ctx=canvas.getContext('2d');
+          ctx.drawImage(img,0,0,canvas.width,canvas.height);
+          resolve(canvas.toDataURL('image/jpeg',0.82));
+        };
+        img.src=reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   function renderCatalogAdmin(){
@@ -527,13 +524,13 @@
   function openItemModal(item=null){
     const wrap=document.createElement('div'); wrap.className='modal-backdrop'; wrap.innerHTML=`<form class="modal" id="itemForm"><div class="modal-head"><h2>${item?'Modifier':'Ajouter'} un élément</h2><button type="button" id="closeModal" class="secondary">×</button></div><div class="form-grid">
       <label>Type<select id="fType"><option value="prestation">Prestation</option><option value="produit">Produit</option></select></label><label>Nom<input id="fName" required value="${esc(item?.name||'')}"></label><label>Prix (€)<input id="fPrice" required type="number" min="0" step="0.01" value="${item?.price??''}"></label><label>Durée (minutes)<input id="fDuration" type="number" min="0" step="5" value="${item?.duration_minutes??0}"></label><label class="check-row span2"><input id="fSolo" type="checkbox" ${item?.is_solo?'checked':''}> Afficher seul sur une ligne</label>
-      <div class="span2"><label>Image depuis le PC</label><div class="image-row" style="margin-top:7px"><div class="image-preview" id="preview">${item?.image_url?`<img src="${esc(item.image_url)}" alt="">`:'Aucune image'}</div><div><input id="fImage" type="file" accept="image/png,image/jpeg,image/webp"><p class="muted" style="font-size:12px">L’image sera envoyée dans Supabase Storage.</p></div></div></div></div><div id="formMsg"></div><div class="modal-actions"><button type="button" id="cancelModal" class="secondary">Annuler</button><button class="primary" type="submit">Enregistrer</button></div></form>`;
+      <div class="span2"><label>Image depuis le PC</label><div class="image-row" style="margin-top:7px"><div class="image-preview" id="preview">${item?.image_url?`<img src="${esc(item.image_url)}" alt="">`:'Aucune image'}</div><div><input id="fImage" type="file" accept="image/png,image/jpeg,image/webp"><p class="muted" style="font-size:12px">L’image sera optimisée et enregistrée avec le catalogue.</p></div></div></div></div><div id="formMsg"></div><div class="modal-actions"><button type="button" id="cancelModal" class="secondary">Annuler</button><button class="primary" type="submit">Enregistrer</button></div></form>`;
     document.body.appendChild(wrap); const type=document.getElementById('fType'); type.value=item?.type||'prestation'; const close=()=>wrap.remove(); document.getElementById('closeModal').onclick=close; document.getElementById('cancelModal').onclick=close; wrap.onclick=e=>{if(e.target===wrap)close();}; const file=document.getElementById('fImage'); file.onchange=()=>{ if(!file.files[0])return; document.getElementById('preview').innerHTML=`<img src="${URL.createObjectURL(file.files[0])}" alt="">`; };
-    document.getElementById('itemForm').onsubmit=async e=>{ e.preventDefault(); const btn=e.submitter; btn.disabled=true;btn.textContent='Enregistrement…';let imageUrl=item?.image_url||null; if(file.files[0]){ const f=file.files[0], ext=(f.name.split('.').pop()||'jpg').toLowerCase(), path=`${state.user.id}/${crypto.randomUUID()}.${ext}`; const up=await sb.storage.from('catalog-images').upload(path,f,{upsert:false}); if(up.error){document.getElementById('formMsg').innerHTML=`<div class="alert error">${esc(up.error.message)}</div>`;btn.disabled=false;btn.textContent='Enregistrer';return;} imageUrl=sb.storage.from('catalog-images').getPublicUrl(path).data.publicUrl; }
-      const typeVal=type.value; const siblings=state.catalog.filter(x=>x.type===typeVal); const row={user_id:state.user.id,type:typeVal,name:document.getElementById('fName').value.trim(),price:Number(document.getElementById('fPrice').value),duration_minutes:typeVal==='prestation'?Number(document.getElementById('fDuration').value||0):0,is_solo:document.getElementById('fSolo').checked,image_url:imageUrl,sort_order:item?.sort_order ?? siblings.length}; const res=item?await sb.from('catalog_items').update(row).eq('id',item.id):await sb.from('catalog_items').insert(row); if(res.error){document.getElementById('formMsg').innerHTML=`<div class="alert error">${esc(res.error.message)}</div>`;btn.disabled=false;btn.textContent='Enregistrer';return;} close();await loadAll();renderCatalogAdmin();notify(item?'Élément modifié.':'Élément ajouté.'); };
+    document.getElementById('itemForm').onsubmit=async e=>{ e.preventDefault(); const btn=e.submitter; btn.disabled=true;btn.textContent='Enregistrement…';let imageUrl=item?.image_url||null; if(file.files[0]){ try{ imageUrl=await imageFileToDataUrl(file.files[0]); }catch(err){document.getElementById('formMsg').innerHTML=`<div class="alert error">${esc(err.message)}</div>`;btn.disabled=false;btn.textContent='Enregistrer';return;} }
+      const typeVal=type.value; const siblings=state.catalog.filter(x=>x.type===typeVal); const row={type:typeVal,name:document.getElementById('fName').value.trim(),price:Number(document.getElementById('fPrice').value),duration_minutes:typeVal==='prestation'?Number(document.getElementById('fDuration').value||0):0,is_solo:document.getElementById('fSolo').checked,image_url:imageUrl,sort_order:item?.sort_order ?? siblings.length}; const res=await sb.rpc('app_save_catalog',{p_pin:state.pinCode,p_item_id:item?.id||null,p_item:row}); if(res.error){document.getElementById('formMsg').innerHTML=`<div class="alert error">${esc(res.error.message)}</div>`;btn.disabled=false;btn.textContent='Enregistrer';return;} close();await loadAll();renderCatalogAdmin();notify(item?'Élément modifié.':'Élément ajouté.'); };
   }
-  async function deleteItem(id){ const item=state.catalog.find(x=>x.id===id); if(!item||!confirm(`Supprimer « ${item.name} » ?`))return; const {error}=await sb.from('catalog_items').delete().eq('id',id); if(error){notify(error.message,'error');return;}await loadAll();renderCatalogAdmin();notify('Élément supprimé.'); }
-  async function moveItem(id,delta){ const item=state.catalog.find(x=>x.id===id); if(!item)return; const group=state.catalog.filter(x=>x.type===item.type).sort((a,b)=>a.sort_order-b.sort_order), i=group.findIndex(x=>x.id===id), j=i+delta;if(j<0||j>=group.length)return; const other=group[j],a=item.sort_order,b=other.sort_order; const [r1,r2]=await Promise.all([sb.from('catalog_items').update({sort_order:b}).eq('id',item.id),sb.from('catalog_items').update({sort_order:a}).eq('id',other.id)]); if(r1.error||r2.error){notify((r1.error||r2.error).message,'error');return;}await loadAll();renderCatalogAdmin(); }
+  async function deleteItem(id){ const item=state.catalog.find(x=>x.id===id); if(!item||!confirm(`Supprimer « ${item.name} » ?`))return; const {error}=await sb.rpc('app_delete_catalog',{p_pin:state.pinCode,p_item_id:id}); if(error){notify(error.message,'error');return;}await loadAll();renderCatalogAdmin();notify('Élément supprimé.'); }
+  async function moveItem(id,delta){ const item=state.catalog.find(x=>x.id===id); if(!item)return; const group=state.catalog.filter(x=>x.type===item.type).sort((a,b)=>a.sort_order-b.sort_order), i=group.findIndex(x=>x.id===id), j=i+delta;if(j<0||j>=group.length)return; const other=group[j],a=item.sort_order,b=other.sort_order; const {error}=await sb.rpc('app_move_catalog',{p_pin:state.pinCode,p_item_a:item.id,p_order_a:b,p_item_b:other.id,p_order_b:a}); if(error){notify(error.message,'error');return;}await loadAll();renderCatalogAdmin(); }
 
   init().catch(err=>{ app.innerHTML=`<div class="center-screen"><div class="auth-card"><h1>Erreur de démarrage</h1><div class="alert error">${esc(err.message)}</div><p class="muted">Recharge la page. Si le problème persiste, vérifie la connexion Internet.</p></div></div>`; });
 })();
