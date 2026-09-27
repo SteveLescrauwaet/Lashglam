@@ -1,3 +1,9 @@
+# LASHGLAM PWA – version 1.15.0
+
+Accès quotidien par code PIN uniquement : **2502**. L’identifiant et le mot de passe ne sont plus affichés. La session Supabase existante reste active en arrière-plan pour conserver les règles RLS et la sécurité de la base. Le bouton **Déconnexion** est remplacé par **Verrouiller**.
+
+Aucune commande SQL n’est nécessaire pour cette mise à jour.
+
 # LASHGLAM PWA – version 1.14.0
 
 Logo LASHGLAM intégré dans l’application (écran de chargement, connexion et barre supérieure).

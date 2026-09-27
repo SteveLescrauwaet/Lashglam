@@ -122,3 +122,5 @@ button:disabled,input:disabled,select:disabled{opacity:.48;cursor:not-allowed}
 .pay-btn[data-pay="espece"]:hover,.pay-btn[data-pay="carte_perso"]:hover,.pay-btn[data-pay="carte_pro"]:hover{filter:brightness(1.08)}
 .pay-btn[data-pay="espece"].active,.pay-btn[data-pay="carte_perso"].active,.pay-btn[data-pay="carte_pro"].active{box-shadow:0 0 0 3px rgba(255,255,255,.18),0 0 0 5px rgba(183,110,121,.45);transform:translateY(-1px)}
 .pay-btn:disabled{opacity:.42;cursor:not-allowed}
+
+.pin-card{text-align:center}.pin-card label{text-align:left}.pin-logo{width:116px!important;height:116px!important;border-radius:30px!important;margin:0 auto 4px!important}.pin-input{text-align:center;font-size:30px;font-weight:900;letter-spacing:.45em;padding-left:.45em;min-height:58px;color:var(--rose2)}

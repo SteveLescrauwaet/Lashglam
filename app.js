@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.14.0';
+  const VERSION = '1.15.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -28,9 +28,15 @@
   ].map(([name,type,price,duration_minutes,image_url,sort_order,is_solo]) => ({name,type,price,duration_minutes,image_url,sort_order,is_solo}));
 
   const state = {
-    session:null, user:null, view:'sale', month:new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    session:null, user:null, pinUnlocked:sessionStorage.getItem('lashglam_pin_unlocked')==='1', view:'sale', month:new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     catalog:[], clients:[], sales:[], cart:[], catalogTab:'prestation', selectedClientId:null, payment:null, saleDate:toDateInput(new Date()), note:'', manualTotal:null, saleSuccess:'', clientError:null, settingsError:null, loyaltyDiscountPercent:10, busy:false
   };
+  const PIN_HASH = '447512622f9767785e7dac3176232565e58fbf84ec87f783607cfbb95d82375b';
+  async function hashText(value){
+    const data=new TextEncoder().encode(String(value));
+    const digest=await crypto.subtle.digest('SHA-256',data);
+    return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
 
   const app = document.getElementById('app');
   const euro = n => new Intl.NumberFormat('fr-BE',{style:'currency',currency:'EUR'}).format(Number(n||0));
@@ -165,7 +171,12 @@
   async function init(){
     const {data:{session}} = await sb.auth.getSession();
     state.session=session; state.user=session?.user||null;
-    sb.auth.onAuthStateChange(async (_event, session) => { state.session=session; state.user=session?.user||null; if(state.user) await loadAll(); render(); });
+    sb.auth.onAuthStateChange(async (_event, session) => {
+      state.session=session; state.user=session?.user||null;
+      if(!state.user){ state.pinUnlocked=false; sessionStorage.removeItem('lashglam_pin_unlocked'); }
+      if(state.user) await loadAll();
+      render();
+    });
     if(state.user) await loadAll();
     render();
     if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
@@ -200,35 +211,66 @@
   }
 
   function render(){
-    if(!state.user){ renderAuth(); return; }
+    if(!state.user){ renderSessionMissing(); return; }
+    if(!state.pinUnlocked){ renderPinLock(); return; }
     app.innerHTML = shellHTML();
     bindShell();
     renderView();
   }
 
-  function renderAuth(){
-    app.innerHTML=`<div class="center-screen"><form id="authForm" class="auth-card">
-      <img class="brand-logo" src="./logo-lashglam.png" alt="LASHGLAM"><p class="eyebrow">LASHGLAM</p><h1>Connexion</h1>
-      <p class="muted">Prestations, produits, paiements et chiffre d’affaires synchronisés avec Supabase.</p>
-      <label>E-mail<input id="email" type="email" required autocomplete="email"></label>
-      <label>Mot de passe<input id="password" type="password" required minlength="6" autocomplete="current-password"></label>
-      <div id="authMsg"></div>
-      <button class="primary full" type="submit">Se connecter</button>
-      <button class="text-btn full" id="signupBtn" type="button">Première utilisation ? Créer le compte</button>
+  function renderPinLock(){
+    app.innerHTML=`<div class="center-screen"><form id="pinForm" class="auth-card pin-card">
+      <img class="brand-logo pin-logo" src="./logo-lashglam.png" alt="LASHGLAM">
+      <p class="eyebrow">LASHGLAM</p><h1>Code d’accès</h1>
+      <p class="muted">Entre le code à 4 chiffres pour ouvrir l’application.</p>
+      <label>Code<input id="pinCode" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" autofocus placeholder="••••"></label>
+      <div id="pinMsg"></div>
+      <button class="primary full" type="submit">Ouvrir l’application</button>
       <small class="muted">Version ${VERSION}</small>
     </form></div>`;
-    let mode='login'; const form=document.getElementById('authForm'), sign=document.getElementById('signupBtn'), msg=document.getElementById('authMsg');
-    sign.onclick=()=>{ mode=mode==='login'?'signup':'login'; form.querySelector('h1').textContent=mode==='login'?'Connexion':'Créer le compte'; form.querySelector('button[type=submit]').textContent=mode==='login'?'Se connecter':'Créer le compte'; sign.textContent=mode==='login'?'Première utilisation ? Créer le compte':'J’ai déjà un compte'; msg.innerHTML=''; };
-    form.onsubmit=async e=>{ e.preventDefault(); const email=document.getElementById('email').value.trim(), password=document.getElementById('password').value; const btn=form.querySelector('button[type=submit]'); btn.disabled=true; btn.textContent='Patiente…'; const res=mode==='login'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password}); if(res.error) msg.innerHTML=`<div class="alert error">${esc(res.error.message)}</div>`; else if(mode==='signup'&&!res.data.session) msg.innerHTML='<div class="alert success">Compte créé. Vérifie ton e-mail si la confirmation est activée.</div>'; btn.disabled=false; btn.textContent=mode==='login'?'Se connecter':'Créer le compte'; };
+    const form=document.getElementById('pinForm'), input=document.getElementById('pinCode'), msg=document.getElementById('pinMsg');
+    input.focus();
+    input.addEventListener('input',()=>{ input.value=input.value.replace(/\D/g,'').slice(0,4); msg.innerHTML=''; });
+    form.onsubmit=async e=>{
+      e.preventDefault();
+      const pin=input.value.trim();
+      if(pin.length!==4){ msg.innerHTML='<div class="alert error">Entre un code à 4 chiffres.</div>'; return; }
+      const hash=await hashText(pin);
+      if(hash!==PIN_HASH){
+        input.value=''; input.focus();
+        msg.innerHTML='<div class="alert error">Code incorrect.</div>';
+        return;
+      }
+      state.pinUnlocked=true;
+      sessionStorage.setItem('lashglam_pin_unlocked','1');
+      render();
+    };
+  }
+
+  function renderSessionMissing(){
+    app.innerHTML=`<div class="center-screen"><div class="auth-card pin-card">
+      <img class="brand-logo pin-logo" src="./logo-lashglam.png" alt="LASHGLAM">
+      <p class="eyebrow">LASHGLAM</p><h1>Session à réactiver</h1>
+      <div class="alert error">La session sécurisée Supabase n’est plus présente sur cet appareil.</div>
+      <p class="muted">Le code seul protège l’accès quotidien, mais la base reste volontairement sécurisée par Supabase. Si les données du navigateur sont effacées ou si tu changes d’appareil, une réactivation unique de la session sera nécessaire.</p>
+      <small class="muted">Version ${VERSION}</small>
+    </div></div>`;
   }
 
   function shellHTML(){
-    return `<div class="shell"><header class="topbar"><img class="brand-logo" src="./logo-lashglam.png" alt="LASHGLAM"><div class="topbar-title"><strong>LASHGLAM</strong><small class="brand-subtitle">Lash Lift Studio</small><small>${esc(state.user.email)}</small></div>
+    return `<div class="shell"><header class="topbar"><img class="brand-logo" src="./logo-lashglam.png" alt="LASHGLAM"><div class="topbar-title"><strong>LASHGLAM</strong><small class="brand-subtitle">Lash Lift Studio</small></div>
       <nav class="nav">${[['sale','Nouvelle vente'],['dashboard','Tableau de bord'],['catalog','Catalogue'],['clients','Clients'],['history','Historique']].map(([id,l])=>`<button data-view="${id}" class="${state.view===id?'active':''}">${l}</button>`).join('')}</nav>
-      <div class="top-actions"><span class="connection-dot">Supabase</span><button id="logout" class="secondary">Déconnexion</button></div></header>
+      <div class="top-actions"><span class="connection-dot">Supabase</span><button id="lockApp" class="secondary">Verrouiller</button></div></header>
       <main id="view" class="page"></main><div class="footer">PWA directe GitHub Pages · v${VERSION}</div></div>`;
   }
-  function bindShell(){ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();}); document.getElementById('logout').onclick=()=>sb.auth.signOut(); }
+  function bindShell(){
+    document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;render();});
+    document.getElementById('lockApp').onclick=()=>{
+      state.pinUnlocked=false;
+      sessionStorage.removeItem('lashglam_pin_unlocked');
+      render();
+    };
+  }
   function renderView(){ if(state.view==='dashboard') renderDashboard(); else if(state.view==='sale') renderSale(); else if(state.view==='history') renderHistory(); else if(state.view==='clients') renderClients(); else renderCatalogAdmin(); }
   function monthNavHTML(){ return `<div class="month-nav"><button id="prevMonth" class="secondary">‹</button><div class="month-label">${esc(monthLabel())}</div><button id="nextMonth" class="secondary">›</button></div>`; }
   function bindMonthNav(){ document.getElementById('prevMonth').onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()-1,1);renderView();}; document.getElementById('nextMonth').onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()+1,1);renderView();}; }

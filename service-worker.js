@@ -1,5 +1,5 @@
-const CACHE = 'beauty-ca-v1.13.0';
-const APP_FILES = ['./', './index.html', './styles.css?v=1.13.0', './app.js?v=1.13.0', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE = 'beauty-ca-v1.15.0';
+const APP_FILES = ['./', './index.html', './styles.css?v=1.15.0', './app.js?v=1.15.0', './manifest.json', './logo-lashglam.png', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(APP_FILES)).then(() => self.skipWaiting()));
