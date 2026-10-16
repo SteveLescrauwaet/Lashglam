@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.16.0';
+  const VERSION = '1.18.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
@@ -62,6 +62,25 @@
   function saleDiscount(s){ return Math.max(0,round2(rawSaleTotal(s)-saleTotal(s))); }
   function parseMoney(v){ const n=Number(String(v??'').replace(/\s/g,'').replace(',','.')); return Number.isFinite(n)?round2(n):null; }
   function monthSales(){ return state.sales.filter(s=>sameMonth(s.sale_date)); }
+  function monthPrestationStats(){
+    const counts=new Map();
+    monthSales().forEach(s=>{
+      (s.sale_lines||[]).forEach(l=>{
+        if(l.type_snapshot!=='prestation') return;
+        const name=String(l.name_snapshot||'Prestation').trim()||'Prestation';
+        counts.set(name,(counts.get(name)||0)+(Number(l.quantity)||0));
+      });
+    });
+    const ordered=[];
+    state.catalog.filter(x=>x.type==='prestation').sort((a,b)=>Number(a.sort_order)-Number(b.sort_order)).forEach(item=>{
+      const name=String(item.name||'').trim();
+      if(!name || ordered.some(x=>x.name===name)) return;
+      ordered.push({name,count:counts.get(name)||0});
+      counts.delete(name);
+    });
+    [...counts.entries()].sort((a,b)=>a[0].localeCompare(b[0],'fr',{sensitivity:'base'})).forEach(([name,count])=>ordered.push({name,count}));
+    return ordered;
+  }
   function clientCode(c){ return c ? `CL${String(Number(c.client_number)||0).padStart(4,'0')}` : ''; }
   function clientName(c){ return c ? `${String(c.first_name||'').trim()} ${String(c.last_name||'').trim()}`.trim() : ''; }
   function clientForSale(s){ return state.clients.find(c=>c.id===s.client_id) || null; }
@@ -173,7 +192,21 @@
       }
     }
     render();
-    if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+    if('serviceWorker' in navigator){
+      let reloading=false;
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{ if(reloading)return; reloading=true; location.reload(); });
+      navigator.serviceWorker.register('./service-worker.js',{updateViaCache:'none'}).then(reg=>{
+        reg.update().catch(()=>{});
+        if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
+        reg.addEventListener('updatefound',()=>{
+          const worker=reg.installing;
+          if(!worker)return;
+          worker.addEventListener('statechange',()=>{
+            if(worker.state==='installed' && navigator.serviceWorker.controller){ worker.postMessage({type:'SKIP_WAITING'}); }
+          });
+        });
+      }).catch(()=>{});
+    }
   }
 
   async function loadAll(seedIfEmpty=true){
@@ -408,7 +441,12 @@
 
   function renderHistory(){
     const sales=monthSales(), total=sales.reduce((a,s)=>a+saleTotal(s),0);
-    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Historique</h1><p>Ventes regroupées par mode de paiement. Les ventes de septembre déjà existantes restent sans fiche client.</p></div>${monthNavHTML()}</div><div class="history-total">${sales.length} vente${sales.length>1?'s':''} · ${euro(total)}</div><div class="history-groups">${PAYMENTS.map(p=>historyGroup(p,sales.filter(s=>s.payment_method===p.id))).join('')}</div>`;
+    const prestationStats=monthPrestationStats();
+    const prestationTotal=prestationStats.reduce((a,x)=>a+Number(x.count||0),0);
+    document.getElementById('view').innerHTML=`<div class="page-head"><div><h1>Historique</h1><p>Ventes regroupées par mode de paiement et nombre de prestations réalisées par type.</p></div>${monthNavHTML()}</div><div class="history-total">${sales.length} vente${sales.length>1?'s':''} · ${euro(total)}</div>
+      <section class="history-prestation-panel"><div class="history-prestation-head"><div><span>STATISTIQUES · ${esc(monthLabel())}</span><h2>Nombre de prestations par type</h2><p>Comptage automatique de toutes les prestations enregistrées pendant le mois sélectionné.</p></div><div class="history-prestation-total"><strong>${prestationTotal}</strong><span>prestation${prestationTotal!==1?'s':''} au total</span></div></div>
+      <div class="history-prestation-grid">${prestationStats.length?prestationStats.map(x=>`<div class="history-prestation-row ${x.count?'has-count':'zero-count'}"><span>${esc(x.name)}</span><strong>${x.count}</strong></div>`).join(''):'<div class="empty">Aucune prestation dans le catalogue.</div>'}</div></section>
+      <div class="history-groups">${PAYMENTS.map(p=>historyGroup(p,sales.filter(s=>s.payment_method===p.id))).join('')}</div>`;
     bindMonthNav();
     document.querySelectorAll('[data-delete-sale]').forEach(b=>b.onclick=()=>deleteHistorySale(b.dataset.deleteSale));
     document.querySelectorAll('[data-delete-line]').forEach(b=>b.onclick=()=>deleteHistoryLine(b.dataset.deleteLine,b.dataset.saleId));

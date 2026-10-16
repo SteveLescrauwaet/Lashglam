@@ -1,3 +1,7 @@
+# LASHGLAM PWA – version 1.18.0
+
+Cette version force la mise à jour de la PWA et affiche clairement, dans Historique, le nombre de prestations par type pour le mois sélectionné.
+
 # LASHGLAM PWA – version 1.17.0
 
 ## Nouveau dans cette version

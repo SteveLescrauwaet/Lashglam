@@ -126,7 +126,7 @@ button:disabled,input:disabled,select:disabled{opacity:.48;cursor:not-allowed}
 .pin-card{text-align:center}.pin-card label{text-align:left}.pin-logo{width:116px!important;height:116px!important;border-radius:30px!important;margin:0 auto 4px!important}.pin-input{text-align:center;font-size:30px;font-weight:900;letter-spacing:.45em;padding-left:.45em;min-height:58px;color:var(--rose2)}
 
 
-/* v1.17 - récapitulatif mensuel des prestations dans l'historique */
+/* v1.18 - récapitulatif mensuel des prestations dans l'historique */
 .history-prestation-panel{margin:0 0 16px;padding:16px;background:linear-gradient(145deg,rgba(183,110,121,.10),rgba(21,18,20,.96));border:1px solid rgba(183,110,121,.28);border-radius:20px}
 .history-prestation-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:13px}
 .history-prestation-head span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:800}
@@ -138,3 +138,9 @@ button:disabled,input:disabled,select:disabled{opacity:.48;cursor:not-allowed}
 .history-prestation-row strong{min-width:34px;height:34px;display:grid;place-items:center;border-radius:11px;background:var(--rose);color:#090909;font-size:15px}
 .history-prestation-row.zero-count{opacity:.48}.history-prestation-row.zero-count strong{background:#3b3336;color:var(--muted)}
 @media(max-width:680px){.history-prestation-grid{grid-template-columns:1fr}.history-prestation-panel{padding:13px}.history-prestation-head{align-items:flex-start}.history-prestation-total{min-width:80px}}
+
+.history-prestation-panel{box-shadow:0 16px 42px rgba(0,0,0,.28),inset 0 0 0 1px rgba(215,161,170,.04)}
+.history-prestation-head p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.45;max-width:650px}
+.history-prestation-row.has-count{border-color:rgba(215,161,170,.42);background:linear-gradient(135deg,rgba(183,110,121,.16),var(--surface2))}
+.history-prestation-row.has-count span{font-weight:800;color:#fff}
+.history-prestation-row.has-count strong{box-shadow:0 0 0 3px rgba(183,110,121,.14)}

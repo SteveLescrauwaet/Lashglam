@@ -1,5 +1,5 @@
-const CACHE = 'beauty-ca-v1.17.0';
-const APP_FILES = ['./', './index.html', './styles.css?v=1.17.0', './app.js?v=1.17.0', './manifest.json', './logo-lashglam.png', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE = 'beauty-ca-v1.18.0';
+const APP_FILES = ['./', './index.html', './styles.css?v=1.18.0', './app.js?v=1.18.0', './manifest.json', './logo-lashglam.png', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(APP_FILES)).then(() => self.skipWaiting()));
@@ -21,4 +21,9 @@ self.addEventListener('fetch', event => {
     caches.open(CACHE).then(cache => cache.put(event.request, clone));
     return response;
   }).catch(() => caches.match(event.request).then(r => r || caches.match('./index.html'))));
+});
+
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
