@@ -1,3 +1,10 @@
+# LASHGLAM PWA – version 1.17.0
+
+## Nouveau dans cette version
+Dans **Historique**, le mois sélectionné affiche maintenant un récapitulatif du **nombre de prestations réalisées par type**, ainsi que le nombre total de prestations du mois. Le récapitulatif suit automatiquement le mois choisi avec les flèches.
+
+Aucune commande SQL supplémentaire n’est nécessaire pour cette mise à jour.
+
 # LASHGLAM PWA – version 1.16.0
 
 ## Important : passage au code PIN uniquement
