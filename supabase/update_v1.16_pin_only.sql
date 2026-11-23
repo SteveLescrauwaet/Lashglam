@@ -191,7 +191,7 @@ begin
   returning id into v_sale_id;
 
   for x in select * from jsonb_array_elements(coalesce(p_lines,'[]'::jsonb)) loop
-    insert into public.sale_lines(user_id,sale_id,catalog_item_id,name_snapshot,type_snapshot,unit_price,quantity)
+    insert into public.sale_lines(user_id,sale_id,catalog_item_id,name_snapshot,type_snapshot,unit_price,quantity,prestation_note)
     values(
       v_owner,
       v_sale_id,
@@ -199,7 +199,8 @@ begin
       x->>'name_snapshot',
       x->>'type_snapshot',
       coalesce((x->>'unit_price')::numeric,0),
-      greatest(1,coalesce((x->>'quantity')::integer,1))
+      greatest(1,coalesce((x->>'quantity')::integer,1)),
+      case when x->>'type_snapshot'='prestation' then left(coalesce(x->>'prestation_note',''),2000) else '' end
     );
   end loop;
 
@@ -236,6 +237,23 @@ begin
   if not found then return false; end if;
   update public.sales set note=coalesce(p_new_note,'') where id=p_sale_id and user_id=v_owner;
   return true;
+end;
+$$;
+
+create or replace function public.app_update_sale_line_note(p_pin text, p_line_id uuid, p_note text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare v_owner uuid;
+begin
+  perform public.lashglam_assert_pin(p_pin);
+  v_owner := public.lashglam_owner_id();
+  update public.sale_lines
+    set prestation_note=left(coalesce(p_note,''),2000)
+    where id=p_line_id and user_id=v_owner and type_snapshot='prestation';
+  return found;
 end;
 $$;
 
@@ -369,6 +387,7 @@ grant execute on function public.app_seed_defaults(text,jsonb) to anon, authenti
 grant execute on function public.app_save_sale(text,uuid,timestamptz,text,text,jsonb) to anon, authenticated;
 grant execute on function public.app_delete_sale(text,uuid) to anon, authenticated;
 grant execute on function public.app_delete_sale_line(text,uuid,uuid,text) to anon, authenticated;
+grant execute on function public.app_update_sale_line_note(text,uuid,text) to anon, authenticated;
 grant execute on function public.app_set_loyalty(text,numeric) to anon, authenticated;
 grant execute on function public.app_save_client(text,uuid,jsonb) to anon, authenticated;
 grant execute on function public.app_save_catalog(text,uuid,jsonb) to anon, authenticated;

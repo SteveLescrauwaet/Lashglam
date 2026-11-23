@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.18.0';
+  const VERSION = '1.19.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
@@ -155,20 +155,20 @@
       ['I','J','K','L','M'].forEach(c=>{if(wsSales[`${c}${r}`]) wsSales[`${c}${r}`].z='#,##0.00 [$€-fr-BE]';});
     }
 
-    const detailRows=[['Date','Heure','N° client','Client','Type','Désignation','Quantité','Prix unitaire (€)','Montant brut (€)','Remise répartie (€)','Montant encaissé (€)','Mode de paiement','Remarque']];
+    const detailRows=[['Date','Heure','N° client','Client','Type','Désignation','Note prestation','Quantité','Prix unitaire (€)','Montant brut (€)','Remise répartie (€)','Montant encaissé (€)','Mode de paiement','Remarque vente']];
     sales.forEach(s=>{
       const d=new Date(s.sale_date), b=saleBreakdown(s), note=saleDisplayNote(s), pay=payInfo(s.payment_method).label, c=clientForSale(s);
       (s.sale_lines||[]).forEach(l=>{
         const gross=round2(Number(l.unit_price)*Number(l.quantity)), net=round2(gross*b.ratio), lineDiscount=Math.max(0,round2(gross-net));
-        detailRows.push([new Date(d.getFullYear(),d.getMonth(),d.getDate()),`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,c?clientCode(c):'',c?clientName(c):'',l.type_snapshot==='produit'?'Produit':'Prestation',l.name_snapshot,Number(l.quantity),Number(l.unit_price),gross,lineDiscount,net,pay,note]);
+        detailRows.push([new Date(d.getFullYear(),d.getMonth(),d.getDate()),`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,c?clientCode(c):'',c?clientName(c):'',l.type_snapshot==='produit'?'Produit':'Prestation',l.name_snapshot,l.type_snapshot==='prestation'?(l.prestation_note||''):'',Number(l.quantity),Number(l.unit_price),gross,lineDiscount,net,pay,note]);
       });
     });
     const wsDetail=XLSX.utils.aoa_to_sheet(detailRows);
-    wsDetail['!cols']=[{wch:12},{wch:8},{wch:11},{wch:28},{wch:13},{wch:38},{wch:10},{wch:17},{wch:17},{wch:19},{wch:20},{wch:18},{wch:30}];
-    wsDetail['!autofilter']={ref:`A1:M${Math.max(1,detailRows.length)}`};
+    wsDetail['!cols']=[{wch:12},{wch:8},{wch:11},{wch:28},{wch:13},{wch:38},{wch:36},{wch:10},{wch:17},{wch:17},{wch:19},{wch:20},{wch:18},{wch:30}];
+    wsDetail['!autofilter']={ref:`A1:N${Math.max(1,detailRows.length)}`};
     for(let r=2;r<=detailRows.length;r++){
       if(wsDetail[`A${r}`]) wsDetail[`A${r}`].z='dd/mm/yyyy';
-      ['H','I','J','K'].forEach(c=>{if(wsDetail[`${c}${r}`]) wsDetail[`${c}${r}`].z='#,##0.00 [$€-fr-BE]';});
+      ['I','J','K','L'].forEach(c=>{if(wsDetail[`${c}${r}`]) wsDetail[`${c}${r}`].z='#,##0.00 [$€-fr-BE]';});
     }
 
     const wb=XLSX.utils.book_new();
@@ -327,7 +327,7 @@
       <div class="catalog-grid">${items.length?items.map(item=>catalogCard(item)).join(''):'<div class="empty">Aucun élément dans cette catégorie.</div>'}</div></section>
       <aside class="cart"><h2>Panier</h2>
       <div class="checkout-step client-step"><div class="step-title"><span>1</span><strong>Client</strong></div><label class="client-search-label" for="clientSearchSale">Rechercher un client</label><div class="client-select-row client-search-sale-row"><div class="client-search-sale"><input id="clientSearchSale" type="search" autocomplete="off" spellcheck="false" placeholder="Tape le nom du client (ex. Flora)…" ${state.clientError?'disabled':''}><div id="clientSearchResults" class="client-search-results"></div></div><button id="newClientFromSale" class="secondary" type="button" ${state.clientError?'disabled':''}>+ Nouveau</button></div><div class="client-search-help">Tu peux rechercher par prénom, nom ou n° client. Clique sur le résultat pour le sélectionner.</div>${selectedClient?`<div class="selected-client"><div><small>Client sélectionné</small><strong>${esc(clientCode(selectedClient)+' - '+clientName(selectedClient))}</strong><span>${esc(selectedClient.email||'Pas d’e-mail')}${selectedClient.phone?' · '+esc(selectedClient.phone):''}</span></div><button id="clearSelectedClient" class="text-btn client-change-btn" type="button">Changer</button></div>${loyaltyText}`:'<div class="locked-hint">Commence à taper le nom du client ci-dessus, puis sélectionne-le dans la liste.</div>'}</div>
-      <div class="cart-lines">${state.cart.length?state.cart.map((l,i)=>`<div class="cart-line"><div class="cart-line-head"><strong>${esc(l.item.name)}</strong><b>${euro(l.item.price*l.qty)}</b></div><div class="qty"><button data-minus="${i}">−</button><strong>${l.qty}</strong><button data-plus="${i}">+</button><span>${euro(l.item.price)} / unité</span></div></div>`).join(''):'<div class="empty">Le panier est vide.</div>'}</div>
+      <div class="cart-lines">${state.cart.length?state.cart.map((l,i)=>`<div class="cart-line"><div class="cart-line-head"><strong>${esc(l.item.name)}</strong><b>${euro(l.item.price*l.qty)}</b></div><div class="qty"><button data-minus="${i}">−</button><strong>${l.qty}</strong><button data-plus="${i}">+</button><span>${euro(l.item.price)} / unité</span></div>${l.item.type==='prestation'?`<label class="cart-prestation-note">Note prestation <small>Facultatif · longueur, couleur, courbure, style…</small><textarea data-cart-note="${i}" placeholder="Ex. 10–12 mm, brun, courbure C, effet naturel…">${esc(l.note||'')}</textarea></label>`:''}</div>`).join(''):'<div class="empty">Le panier est vide.</div>'}</div>
       <div class="cart-subtotal"><span>Sous-total</span><strong>${euro(baseTotal)}</strong></div>
       <div class="manual-total-block"><label for="manualTotal">Total à payer <small>${loyalty.eligible?`La remise fidélité de ${loyaltyPctText} % est automatique. Tu peux encore diminuer le total.`:'Modifiable pour appliquer une remise.'}</small></label><div class="manual-total-input"><input id="manualTotal" inputmode="decimal" autocomplete="off" value="${entered.toFixed(2).replace('.',',')}" ${state.cart.length?'':'disabled'}><span>€</span></div><div id="discountInfo" class="discount-info ${discount>0?'active':''}">${discountText}</div>${discount>0?`<button id="resetDiscount" class="text-btn reset-discount" type="button">${loyalty.eligible?'Revenir à la remise fidélité':'Annuler la remise'}</button>`:''}</div>
       <label style="margin-top:12px">Date<input id="saleDate" type="date" value="${state.saleDate}"></label>
@@ -339,6 +339,7 @@
     document.querySelectorAll('[data-add]').forEach(x=>x.onclick=()=>addCart(x.dataset.add));
     document.querySelectorAll('[data-minus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.minus,-1));
     document.querySelectorAll('[data-plus]').forEach(x=>x.onclick=()=>changeQty(+x.dataset.plus,1));
+    document.querySelectorAll('[data-cart-note]').forEach(x=>x.oninput=()=>{ const i=Number(x.dataset.cartNote); if(state.cart[i]) state.cart[i].note=x.value; });
     document.querySelectorAll('[data-pay]').forEach(x=>x.onclick=()=>{ if(!selectedClient)return; state.payment=x.dataset.pay;renderSale(); });
     const clientSearchInput=document.getElementById('clientSearchSale');
     const clientSearchResults=document.getElementById('clientSearchResults');
@@ -416,7 +417,7 @@
   }
   function catalogCard(item){ const img=item.image_url?`<img src="${esc(item.image_url)}" alt="" onerror="this.outerHTML='<div class=&quot;img-fallback&quot;>Image</div>'">`:'<div class="img-fallback">Image</div>'; return `<article class="catalog-card ${item.is_solo?'solo':''}" data-add="${item.id}">${img}<div class="card-body"><strong>${esc(item.name)}</strong><small>${item.type==='prestation'&&item.duration_minutes?durationLabel(item.duration_minutes):item.type==='produit'?'Produit':''}</small><b>${euro(item.price)}</b><div class="add-hint">+ Ajouter</div></div></article>`; }
   function durationLabel(m){ const h=Math.floor(m/60),min=m%60; return h&&min?`${h}h${String(min).padStart(2,'0')}`:h?`${h}h`:`${min} min`; }
-  function addCart(id){ state.saleSuccess=''; state.manualTotal=null; const item=state.catalog.find(x=>x.id===id); if(!item)return; const l=state.cart.find(x=>x.item.id===id); if(l)l.qty++; else state.cart.push({item,qty:1}); renderSale(); }
+  function addCart(id){ state.saleSuccess=''; state.manualTotal=null; const item=state.catalog.find(x=>x.id===id); if(!item)return; const l=state.cart.find(x=>x.item.id===id); if(l)l.qty++; else state.cart.push({item,qty:1,note:''}); renderSale(); }
   function changeQty(i,d){ state.manualTotal=null; state.cart[i].qty+=d; if(state.cart[i].qty<=0)state.cart.splice(i,1); renderSale(); }
   async function saveSale(){
     if(!state.cart.length) return;
@@ -429,7 +430,7 @@
     const btn=document.getElementById('saveSale'); btn.disabled=true; btn.textContent='Enregistrement…';
     const dt=new Date(`${state.saleDate}T12:00:00`);
     const storedNote=buildSaleNote(state.note,baseTotal,finalTotal);
-    const lines=state.cart.map(l=>({catalog_item_id:l.item.id,name_snapshot:l.item.name,type_snapshot:l.item.type,unit_price:l.item.price,quantity:l.qty}));
+    const lines=state.cart.map(l=>({catalog_item_id:l.item.id,name_snapshot:l.item.name,type_snapshot:l.item.type,unit_price:l.item.price,quantity:l.qty,prestation_note:l.item.type==='prestation'?String(l.note||'').trim():''}));
     const {error}=await sb.rpc('app_save_sale',{p_pin:state.pinCode,p_client_id:client.id,p_sale_date:dt.toISOString(),p_payment_method:state.payment,p_note:storedNote,p_lines:lines});
     if(error){notify(error.message,'error');renderSale();return;}
     const loyaltyApplied=loyalty.eligible;
@@ -456,7 +457,7 @@
     return `<details class="pay-group" open><summary><div class="pay-icon">${p.icon}</div><div class="pay-title"><strong>${p.label}</strong><span>${sales.length} vente${sales.length>1?'s':''}</span></div><b>${euro(total)}</b></summary><div class="pay-body">${sales.length?sales.map(s=>{
       const raw=rawSaleTotal(s), paid=saleTotal(s), discount=saleDiscount(s), note=saleDisplayNote(s), c=clientForSale(s);
       const title=c?`${clientCode(c)} - ${clientName(c)}`:(note||'Ancienne vente (sans client)');
-      return `<details class="sale-card"><summary><div><strong>${esc(title)}</strong><span>${saleHistoryDateTime(s)}</span></div><b>${euro(paid)}</b></summary><div class="sale-details">${c?`<div class="history-client"><strong>${esc(clientCode(c)+' - '+clientName(c))}</strong><span>${esc(c.email||'')}${c.phone?' · '+esc(c.phone):''}</span></div>`:''}${note&&c?`<div class="history-note">Remarque : ${esc(note)}</div>`:''}${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div class="sale-line-main"><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)} · ${l.type_snapshot==='produit'?'Produit':'Prestation'}</small></div><div class="sale-line-actions"><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b><button class="history-delete-line" type="button" data-delete-line="${l.id}" data-sale-id="${s.id}" title="Supprimer cette ligne">×</button></div></div>`).join('')}${discount>0?`<div class="history-discount"><div><span>Sous-total</span><b>${euro(raw)}</b></div><div><span>Remise appliquée</span><b>−${euro(discount)}</b></div><div class="history-paid"><span>Total payé</span><b>${euro(paid)}</b></div></div>`:''}<div class="sale-footer"><button class="danger-btn compact" type="button" data-delete-sale="${s.id}">Supprimer la vente complète</button></div></div></details>`;
+      return `<details class="sale-card"><summary><div><strong>${esc(title)}</strong><span>${saleHistoryDateTime(s)}</span></div><b>${euro(paid)}</b></summary><div class="sale-details">${c?`<div class="history-client"><strong>${esc(clientCode(c)+' - '+clientName(c))}</strong><span>${esc(c.email||'')}${c.phone?' · '+esc(c.phone):''}</span></div>`:''}${note&&c?`<div class="history-note">Remarque : ${esc(note)}</div>`:''}${(s.sale_lines||[]).map(l=>`<div class="sale-line"><div class="sale-line-main"><strong>${esc(l.name_snapshot)}</strong><br><small>${l.quantity} × ${euro(l.unit_price)} · ${l.type_snapshot==='produit'?'Produit':'Prestation'}</small>${l.type_snapshot==='prestation'&&l.prestation_note?`<div class="history-prestation-note">📝 ${esc(l.prestation_note)}</div>`:''}</div><div class="sale-line-actions"><b>${euro(Number(l.unit_price)*Number(l.quantity))}</b><button class="history-delete-line" type="button" data-delete-line="${l.id}" data-sale-id="${s.id}" title="Supprimer cette ligne">×</button></div></div>`).join('')}${discount>0?`<div class="history-discount"><div><span>Sous-total</span><b>${euro(raw)}</b></div><div><span>Remise appliquée</span><b>−${euro(discount)}</b></div><div class="history-paid"><span>Total payé</span><b>${euro(paid)}</b></div></div>`:''}<div class="sale-footer"><button class="danger-btn compact" type="button" data-delete-sale="${s.id}">Supprimer la vente complète</button></div></div></details>`;
     }).join(''):'<div class="empty">Aucune vente.</div>'}</div></details>`;
   }
   async function deleteHistorySale(id){
@@ -496,6 +497,7 @@
     const add=document.getElementById('addClient'); if(add) add.onclick=()=>openClientModal();
     const saveRate=document.getElementById('saveLoyaltyRate'); if(saveRate) saveRate.onclick=saveLoyaltyRate;
     document.querySelectorAll('[data-edit-client]').forEach(b=>b.onclick=()=>openClientModal(state.clients.find(c=>c.id===b.dataset.editClient)));
+    document.querySelectorAll('[data-view-client]').forEach(b=>b.onclick=()=>openClientSheet(b.dataset.viewClient));
     const search=document.getElementById('clientSearch');
     if(search) search.oninput=e=>{ const q=e.target.value.trim().toLowerCase(); document.querySelectorAll('.client-card').forEach(card=>{card.hidden=q&&!card.dataset.search.includes(q);}); };
   }
@@ -512,8 +514,61 @@
   function clientCard(c){
     const n=clientAppointmentCount(c.id), active=n>=5, pct=percentLabel(loyaltyPercent());
     const search=[clientCode(c),clientName(c),c.email||'',c.phone||''].join(' ').toLowerCase();
-    return `<article class="client-card" data-search="${esc(search)}"><div class="client-number">${esc(clientCode(c))}</div><div class="client-card-main"><strong>${esc(clientName(c))}</strong><span>${esc(c.email||'Pas d’e-mail')}${c.phone?' · '+esc(c.phone):' · Pas de téléphone'}</span></div><div class="client-rdv ${active?'active':''}"><strong>${n} RDV</strong><span>${active?`−${pct} % actif`:`${Math.max(0,5-n)} avant −${pct} %`}</span></div><button class="icon-btn" type="button" data-edit-client="${c.id}" title="Modifier">✎</button></article>`;
+    return `<article class="client-card" data-search="${esc(search)}"><div class="client-number">${esc(clientCode(c))}</div><div class="client-card-main"><strong>${esc(clientName(c))}</strong><span>${esc(c.email||'Pas d’e-mail')}${c.phone?' · '+esc(c.phone):' · Pas de téléphone'}</span></div><div class="client-rdv ${active?'active':''}"><strong>${n} RDV</strong><span>${active?`−${pct} % actif`:`${Math.max(0,5-n)} avant −${pct} %`}</span></div><div class="client-card-actions"><button class="secondary client-file-btn" type="button" data-view-client="${c.id}">Voir la fiche</button><button class="icon-btn" type="button" data-edit-client="${c.id}" title="Modifier les coordonnées">✎</button></div></article>`;
   }
+  function clientPrestationEntries(clientId){
+    const entries=[];
+    state.sales.filter(s=>s.client_id===clientId).forEach(s=>{
+      (s.sale_lines||[]).forEach(l=>{
+        if(l.type_snapshot==='prestation') entries.push({sale:s,line:l});
+      });
+    });
+    return entries.sort((a,b)=>new Date(b.sale.sale_date)-new Date(a.sale.sale_date) || new Date(b.sale.created_at||b.sale.sale_date)-new Date(a.sale.created_at||a.sale.sale_date));
+  }
+  function clientPrestationSummary(clientId){
+    const counts=new Map();
+    clientPrestationEntries(clientId).forEach(({line})=>{
+      const name=String(line.name_snapshot||'Prestation').trim()||'Prestation';
+      counts.set(name,(counts.get(name)||0)+(Number(line.quantity)||0));
+    });
+    return [...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0],'fr',{sensitivity:'base'}));
+  }
+  function clientEntryDate(sale){
+    const d=new Date(sale.sale_date);
+    return new Intl.DateTimeFormat('fr-BE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(d);
+  }
+  function openClientSheet(clientId){
+    const client=state.clients.find(c=>c.id===clientId); if(!client)return;
+    const entries=clientPrestationEntries(clientId), summary=clientPrestationSummary(clientId), rdv=clientAppointmentCount(clientId), pct=percentLabel(loyaltyPercent());
+    const wrap=document.createElement('div'); wrap.className='modal-backdrop client-sheet-backdrop';
+    wrap.innerHTML=`<div class="modal client-sheet-modal"><div class="modal-head client-sheet-head"><div><p class="eyebrow">FICHE CLIENTE</p><h2>${esc(clientCode(client)+' - '+clientName(client))}</h2><p class="client-sheet-contact">${esc(client.email||'Pas d’e-mail')}${client.phone?' · '+esc(client.phone):' · Pas de téléphone'}</p></div><button type="button" id="closeClientSheet" class="secondary">×</button></div>
+      <div class="client-sheet-metrics"><div><span>RDV</span><strong>${rdv}</strong></div><div><span>Prestations</span><strong>${entries.reduce((a,e)=>a+(Number(e.line.quantity)||0),0)}</strong></div><div><span>Fidélité</span><strong>${rdv>=5?'−'+pct+' %':Math.max(0,5-rdv)+' avant remise'}</strong></div></div>
+      <section class="client-sheet-section"><div class="client-sheet-section-head"><div><h3>Aperçu des prestations</h3><p>Nombre réalisé par type pour cette cliente.</p></div></div><div class="client-summary-grid">${summary.length?summary.map(([name,count])=>`<div class="client-summary-chip"><span>${esc(name)}</span><strong>${count}</strong></div>`).join(''):'<div class="empty">Aucune prestation enregistrée pour cette cliente.</div>'}</div></section>
+      <section class="client-sheet-section"><div class="client-sheet-section-head"><div><h3>Historique des prestations</h3><p>La note peut être ajoutée ou modifiée après le rendez-vous.</p></div></div><div class="client-prestation-list">${entries.length?entries.map(({sale,line})=>`<article class="client-prestation-entry"><div class="client-prestation-date"><strong>${clientEntryDate(sale)}</strong><span>${new Intl.DateTimeFormat('fr-BE',{hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(sale.created_at||sale.sale_date))}</span></div><div class="client-prestation-main"><strong>${esc(line.name_snapshot)}</strong><small>${line.quantity>1?`${line.quantity} × `:''}${euro(line.unit_price)}</small><div class="client-prestation-memo ${line.prestation_note?'has-note':''}">${line.prestation_note?`<span>📝 ${esc(line.prestation_note)}</span>`:'<span>Aucune note technique encodée.</span>'}</div></div><button class="secondary client-note-btn" type="button" data-edit-prestation-note="${line.id}" data-sale-id="${sale.id}">${line.prestation_note?'Modifier la note':'+ Ajouter une note'}</button></article>`).join(''):'<div class="empty">Aucune prestation enregistrée pour cette cliente.</div>'}</div></section>
+      <div class="modal-actions client-sheet-actions"><button type="button" id="editClientFromSheet" class="secondary">Modifier les coordonnées</button><button type="button" id="closeClientSheetBottom" class="primary">Fermer</button></div></div>`;
+    document.body.appendChild(wrap);
+    const close=()=>wrap.remove();
+    document.getElementById('closeClientSheet').onclick=close; document.getElementById('closeClientSheetBottom').onclick=close; wrap.onclick=e=>{if(e.target===wrap)close();};
+    document.getElementById('editClientFromSheet').onclick=()=>{close();openClientModal(client);};
+    wrap.querySelectorAll('[data-edit-prestation-note]').forEach(b=>b.onclick=()=>openPrestationNoteModal(b.dataset.editPrestationNote,clientId,wrap));
+  }
+  function openPrestationNoteModal(lineId,clientId,parentSheet=null){
+    let line=null;
+    for(const s of state.sales){ const found=(s.sale_lines||[]).find(l=>l.id===lineId); if(found){line=found;break;} }
+    if(!line)return;
+    const wrap=document.createElement('div'); wrap.className='modal-backdrop note-modal-backdrop';
+    wrap.innerHTML=`<form class="modal note-modal" id="prestationNoteForm"><div class="modal-head"><div><h2>Note de prestation</h2><p class="client-modal-code">${esc(line.name_snapshot)}</p></div><button type="button" id="closePrestationNote" class="secondary">×</button></div><label>Détails techniques<textarea id="prestationNoteText" maxlength="2000" autofocus placeholder="Ex. longueur 10–12 mm, couleur brun, courbure C, style naturel…">${esc(line.prestation_note||'')}</textarea></label><p class="muted note-help">Cette note sera visible dans la fiche cliente et pourra être modifiée à tout moment.</p><div id="prestationNoteMsg"></div><div class="modal-actions"><button type="button" id="cancelPrestationNote" class="secondary">Annuler</button><button type="submit" class="primary">Enregistrer la note</button></div></form>`;
+    document.body.appendChild(wrap);
+    const close=()=>wrap.remove(); document.getElementById('closePrestationNote').onclick=close; document.getElementById('cancelPrestationNote').onclick=close; wrap.onclick=e=>{if(e.target===wrap)close();};
+    setTimeout(()=>document.getElementById('prestationNoteText')?.focus(),30);
+    document.getElementById('prestationNoteForm').onsubmit=async e=>{
+      e.preventDefault(); const btn=e.submitter; btn.disabled=true; btn.textContent='Enregistrement…'; const note=document.getElementById('prestationNoteText').value.trim();
+      const {error}=await sb.rpc('app_update_sale_line_note',{p_pin:state.pinCode,p_line_id:lineId,p_note:note});
+      if(error){ document.getElementById('prestationNoteMsg').innerHTML=`<div class="alert error">${esc(error.message)}<br><small>Si la fonction n’existe pas encore, exécute supabase/update_v1.19_client_notes.sql.</small></div>`; btn.disabled=false; btn.textContent='Enregistrer la note'; return; }
+      close(); await loadAll(false); if(parentSheet&&parentSheet.isConnected) parentSheet.remove(); openClientSheet(clientId); notify(note?'Note de prestation enregistrée.':'Note de prestation effacée.');
+    };
+  }
+
   function openClientModal(client=null,{selectAfter=false}={}){
     const wrap=document.createElement('div'); wrap.className='modal-backdrop';
     wrap.innerHTML=`<form class="modal client-modal" id="clientForm"><div class="modal-head"><div><h2>${client?'Modifier le client':'Nouveau client'}</h2>${client?`<p class="client-modal-code">${esc(clientCode(client))}</p>`:'<p class="client-modal-code">Le numéro sera attribué automatiquement.</p>'}</div><button type="button" id="closeClientModal" class="secondary">×</button></div><div class="form-grid"><label>Prénom<input id="cFirstName" required autocomplete="given-name" value="${esc(client?.first_name||'')}"></label><label>Nom<input id="cLastName" required autocomplete="family-name" value="${esc(client?.last_name||'')}"></label><label>E-mail<input id="cEmail" type="email" autocomplete="email" value="${esc(client?.email||'')}"></label><label>Téléphone<input id="cPhone" type="tel" autocomplete="tel" value="${esc(client?.phone||'')}"></label></div><div id="clientFormMsg"></div><div class="modal-actions"><button type="button" id="cancelClientModal" class="secondary">Annuler</button><button class="primary" type="submit">${client?'Enregistrer':'Créer le client'}</button></div></form>`;

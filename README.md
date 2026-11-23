@@ -1,3 +1,31 @@
+# LASHGLAM PWA – version 1.19.0
+
+## Fiches clientes et notes de prestation
+
+Cette version ajoute de vraies **fiches clientes**. Depuis l’onglet **Clients**, le bouton **Voir la fiche** affiche :
+
+- les coordonnées de la cliente ;
+- le nombre de RDV et l’état de la fidélité ;
+- un résumé du nombre de prestations réalisées par type ;
+- l’historique complet des prestations avec leur date ;
+- une **note technique par prestation** (longueur, couleur, courbure, style, etc.).
+
+Dans **Nouvelle vente**, chaque prestation ajoutée au panier possède maintenant un champ **Note prestation** facultatif. La note est enregistrée avec la prestation.
+
+Si la note n’est pas remplie au moment de la vente, elle peut être ajoutée ou modifiée plus tard dans la fiche cliente. Les anciennes prestations restent intactes et apparaissent avec une note vide jusqu’à ce qu’elle soit complétée.
+
+### Mise à jour Supabase obligatoire
+
+Avant d’utiliser les notes, exécute **une seule fois** dans **Supabase > SQL Editor** le fichier :
+
+`supabase/update_v1.19_client_notes.sql`
+
+Cette migration ajoute uniquement le champ de note et les fonctions nécessaires. **Elle ne supprime ni ne modifie les ventes, clientes ou prestations existantes.**
+
+Ensuite, remplace les fichiers du dépôt GitHub par ceux de ce ZIP et fais **Commit changes**.
+
+---
+
 # LASHGLAM PWA – version 1.18.0
 
 Cette version force la mise à jour de la PWA et affiche clairement, dans Historique, le nombre de prestations par type pour le mois sélectionné.

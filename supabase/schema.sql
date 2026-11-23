@@ -44,6 +44,7 @@ create table if not exists public.sale_lines (
   type_snapshot text not null check (type_snapshot in ('prestation', 'produit')),
   unit_price numeric(10,2) not null check (unit_price >= 0),
   quantity integer not null default 1 check (quantity > 0),
+  prestation_note text not null default '',
   created_at timestamptz not null default now(),
   constraint sale_lines_sale_owner_fk
     foreign key (sale_id, user_id)
