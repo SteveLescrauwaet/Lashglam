@@ -1,3 +1,14 @@
+# LASHGLAM PWA – version 1.20.0
+
+## Nouveau : suppression des doublons clients
+
+Dans **Clients**, une corbeille permet de supprimer un doublon. Si le doublon possède déjà des ventes, l’application demande quelle fiche cliente conserver, transfère toutes les ventes / prestations / notes techniques vers cette fiche, puis supprime le doublon.
+
+### Mise à jour Supabase obligatoire
+Exécuter une seule fois `supabase/update_v1.20_delete_duplicate_clients.sql` dans **Supabase → SQL Editor → Run**.
+
+---
+
 # LASHGLAM PWA – version 1.19.0
 
 ## Fiches clientes et notes de prestation

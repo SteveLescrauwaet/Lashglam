@@ -3,7 +3,7 @@
 
   const SUPABASE_URL = 'https://cbgxfacrfcblckrwciuh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_Twd4c4RPZPLJMiQ4eepx7g_3hCwf2mM';
-  const VERSION = '1.19.0';
+  const VERSION = '1.20.0';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
@@ -498,6 +498,7 @@
     const saveRate=document.getElementById('saveLoyaltyRate'); if(saveRate) saveRate.onclick=saveLoyaltyRate;
     document.querySelectorAll('[data-edit-client]').forEach(b=>b.onclick=()=>openClientModal(state.clients.find(c=>c.id===b.dataset.editClient)));
     document.querySelectorAll('[data-view-client]').forEach(b=>b.onclick=()=>openClientSheet(b.dataset.viewClient));
+    document.querySelectorAll('[data-delete-client]').forEach(b=>b.onclick=()=>deleteOrMergeClient(b.dataset.deleteClient));
     const search=document.getElementById('clientSearch');
     if(search) search.oninput=e=>{ const q=e.target.value.trim().toLowerCase(); document.querySelectorAll('.client-card').forEach(card=>{card.hidden=q&&!card.dataset.search.includes(q);}); };
   }
@@ -514,8 +515,50 @@
   function clientCard(c){
     const n=clientAppointmentCount(c.id), active=n>=5, pct=percentLabel(loyaltyPercent());
     const search=[clientCode(c),clientName(c),c.email||'',c.phone||''].join(' ').toLowerCase();
-    return `<article class="client-card" data-search="${esc(search)}"><div class="client-number">${esc(clientCode(c))}</div><div class="client-card-main"><strong>${esc(clientName(c))}</strong><span>${esc(c.email||'Pas d’e-mail')}${c.phone?' · '+esc(c.phone):' · Pas de téléphone'}</span></div><div class="client-rdv ${active?'active':''}"><strong>${n} RDV</strong><span>${active?`−${pct} % actif`:`${Math.max(0,5-n)} avant −${pct} %`}</span></div><div class="client-card-actions"><button class="secondary client-file-btn" type="button" data-view-client="${c.id}">Voir la fiche</button><button class="icon-btn" type="button" data-edit-client="${c.id}" title="Modifier les coordonnées">✎</button></div></article>`;
+    return `<article class="client-card" data-search="${esc(search)}"><div class="client-number">${esc(clientCode(c))}</div><div class="client-card-main"><strong>${esc(clientName(c))}</strong><span>${esc(c.email||'Pas d’e-mail')}${c.phone?' · '+esc(c.phone):' · Pas de téléphone'}</span></div><div class="client-rdv ${active?'active':''}"><strong>${n} RDV</strong><span>${active?`−${pct} % actif`:`${Math.max(0,5-n)} avant −${pct} %`}</span></div><div class="client-card-actions"><button class="secondary client-file-btn" type="button" data-view-client="${c.id}">Voir la fiche</button><button class="icon-btn" type="button" data-edit-client="${c.id}" title="Modifier les coordonnées">✎</button><button class="icon-btn client-delete-btn" type="button" data-delete-client="${c.id}" title="Supprimer un doublon">🗑</button></div></article>`;
   }
+  async function deleteOrMergeClient(clientId){
+    const client=state.clients.find(c=>c.id===clientId); if(!client)return;
+    const linkedSales=state.sales.filter(s=>s.client_id===clientId);
+    if(linkedSales.length===0){
+      if(!confirm(`Supprimer définitivement le doublon « ${clientCode(client)} - ${clientName(client)} » ?\n\nCette fiche ne possède aucune vente liée.`)) return;
+      const {data,error}=await sb.rpc('app_merge_delete_client',{p_pin:state.pinCode,p_delete_client_id:clientId,p_keep_client_id:null});
+      if(error){ notify('Suppression client : '+error.message,'error'); return; }
+      if(state.selectedClientId===clientId) state.selectedClientId=null;
+      await loadAll(false); renderClients(); notify('Doublon client supprimé.');
+      return;
+    }
+    openMergeClientModal(client,linkedSales.length);
+  }
+
+  function openMergeClientModal(duplicate,saleCount){
+    const others=state.clients.filter(c=>c.id!==duplicate.id).sort((a,b)=>Number(a.client_number)-Number(b.client_number));
+    if(!others.length){ notify('Impossible de supprimer cette fiche : elle possède des ventes et aucun autre client ne peut les recevoir.','error'); return; }
+    const wrap=document.createElement('div'); wrap.className='modal-backdrop';
+    wrap.innerHTML=`<form class="modal client-merge-modal" id="mergeClientForm"><div class="modal-head"><div><p class="eyebrow">DOUBLON CLIENT</p><h2>Supprimer ${esc(clientCode(duplicate)+' - '+clientName(duplicate))}</h2></div><button type="button" id="closeMergeClient" class="secondary">×</button></div>
+      <div class="alert merge-info">Cette fiche possède <strong>${saleCount} vente${saleCount>1?'s':''}</strong>. Pour ne rien perdre, choisis la fiche cliente correcte à conserver. Toutes les ventes, prestations, notes techniques et le compteur de fidélité seront regroupés sur celle-ci.</div>
+      <label>Fiche cliente à conserver<select id="keepClient" required><option value="">Sélectionner…</option>${others.map(c=>`<option value="${c.id}">${esc(clientCode(c)+' - '+clientName(c))}</option>`).join('')}</select></label>
+      <div id="mergeClientMsg"></div><div class="modal-actions"><button type="button" id="cancelMergeClient" class="secondary">Annuler</button><button type="submit" class="danger-btn">Transférer et supprimer le doublon</button></div></form>`;
+    document.body.appendChild(wrap);
+    const close=()=>wrap.remove();
+    document.getElementById('closeMergeClient').onclick=close; document.getElementById('cancelMergeClient').onclick=close; wrap.onclick=e=>{if(e.target===wrap)close();};
+    document.getElementById('mergeClientForm').onsubmit=async e=>{
+      e.preventDefault();
+      const keepId=document.getElementById('keepClient').value;
+      const keep=state.clients.find(c=>c.id===keepId);
+      const msg=document.getElementById('mergeClientMsg');
+      if(!keep){ msg.innerHTML='<div class="alert error">Sélectionne la fiche cliente à conserver.</div>'; return; }
+      if(!confirm(`Confirmer la fusion ?\n\nLes ${saleCount} vente${saleCount>1?'s':''} de ${clientCode(duplicate)} - ${clientName(duplicate)} seront transférées vers ${clientCode(keep)} - ${clientName(keep)}, puis le doublon sera supprimé.`)) return;
+      const btn=e.submitter; btn.disabled=true; btn.textContent='Fusion en cours…';
+      const {data,error}=await sb.rpc('app_merge_delete_client',{p_pin:state.pinCode,p_delete_client_id:duplicate.id,p_keep_client_id:keep.id});
+      if(error){ msg.innerHTML=`<div class="alert error">${esc(error.message)}</div>`; btn.disabled=false; btn.textContent='Transférer et supprimer le doublon'; return; }
+      if(state.selectedClientId===duplicate.id) state.selectedClientId=keep.id;
+      close(); await loadAll(false); renderClients();
+      const moved=Number(data?.moved_sales??saleCount);
+      notify(`Doublon supprimé · ${moved} vente${moved>1?'s':''} transférée${moved>1?'s':''}.`);
+    };
+  }
+
   function clientPrestationEntries(clientId){
     const entries=[];
     state.sales.filter(s=>s.client_id===clientId).forEach(s=>{
